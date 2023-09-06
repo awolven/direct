@@ -1,4 +1,4 @@
-(in-package :dml)
+(in-package :direct)
 
 (defun setter-error (slot-name self)
   (error "slot ~A cannot be set in ~S" slot-name self))

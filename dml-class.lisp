@@ -1,4 +1,4 @@
-(in-package :dml)
+(in-package :direct)
 
 (cl:defclass dml-class (standard-class) ())
 
@@ -104,7 +104,7 @@
 		       (compile nil (slot-value slotd 'setter)))))
     (values)))
 	       
-(defmacro dml::defclass (name supers slots &body body)
+(defmacro direct::defclass (name supers slots &body body)
   (let* ((adhoc::*slots-table* (make-hash-table))
 	 (slots (adhoc::parse-slots-section name slots))
 	 (metaclass (if (assoc :metaclass body)

@@ -1,6 +1,6 @@
 (in-package :cl-user)
 
-(adhoc:defpackage dml
+(adhoc:defpackage direct
   (:use :3dm)
   (:shadow #:defclass)
   (:export #:defclass)
