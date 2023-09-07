@@ -1,19 +1,19 @@
 (in-package :direct)
 
+(defconstant 2pi #.(* pi 2.0d0))
+
+(defconstant pi/2 #.(/ pi 2.0d0))
+
 (defun setter-error (slot-name self)
   (error "slot ~A cannot be set in ~S" slot-name self))
 
 (defclass entity-mixin ()
   ;; entities are persistent objects
-  ((%plist :initform (list :head))
-   
-   (plist :slot-class :virtual
-	  :type cl:list
-	  :getter ((cdr (the %plist)))
-	  :setter ((setter-error 'plist self)))))
+  ((plist :initform nil
+	  :type cl:list)))
 
 (defmethod set-property ((self entity-mixin) (property-name symbol) property-value)
-  (setf (getf (cdr (the %plist)) property-name) property-value))
+  (setf (getf (the plist) property-name) property-value))
 
 (defmethod get-property ((self entity-mixin) (property-name symbol))
   (let ((val (getf (the plist) property-name :%%none%%)))
@@ -21,41 +21,63 @@
 	(values nil nil)
 	(values val t))))
 
+(defclass layer (entity-mixin)
+  ((name :initform nil
+	 :initarg :name
+	 :initarg name)
+   
+   (hidden? :initform nil
+	    :initarg :hidden
+	    :initarg hidden)
+
+   (color :initform #(1.0f0 1.0f0 1.0f0 1.0f0)
+	  :initarg :color
+	  :initarg color)
+   
+   (linetype :initform nil
+	     :initarg :linetype
+	     :initarg linetype)))
+
+(defclass linetype (entity-mixin)
+  ((name :initform nil
+	 :initarg :name
+	 :initarg name)
+
+   (pattern :initform nil
+	    :initarg :pattern
+	    :initarg pattern)))
+
 (defclass geometry-mixin ()
   ;; these objects are objects with drawable geometry
   ((%group-id :initform nil)
    (%prim-ids :initform nil)
    
-   (hidden? :initform nil
-	    :type boolean
-	    :initarg :hidden?
-	    :initarg hidden?)
+   (%hidden? :initform nil
+	     :type boolean)
+
+   (%color :initform nil)
 
    (layer :initform nil
 	  :initarg :layer
 	  :initarg layer)
 
-   (color :initform nil
+   (hidden? :slot-class :virtual
+	    :type boolean
+	    :initarg :hidden?
+	    :initarg hidden?
+	    :getter ((or (the %hidden?) (and (the layer) (the layer hidden?))))
+	    :setter ((setf (the %hidden?) value)))
+
+   (color :slot-class :virtual
+	  :type t
 	  :initarg :color
-	  :initarg color)))
+	  :initarg color
+	  :getter ((or (the %color) (and (the layer) (the layer color))))
+	  :setter ((setf (the %color) value)))))
 
 (defclass bounding-box (geometry-mixin)
   ((hidden? :initform t
 	    :type boolean)
-   
-   (min :initform (vec3 most-negative-double-float
-			most-negative-double-float
-			most-negative-double-float)
-	:initarg :min
-	:initarg min
-	:type vec3)
-   
-   (max :initform (vec3 most-positive-double-float
-			most-positive-double-float
-			most-positive-double-float)
-	:initarg :max
-	:initarg max
-	:type vec3)
 
    (degenerate? :slot-class :virtual
 		:type boolean
@@ -66,10 +88,53 @@
 			       (= (vz min) (vz max)))))
 		:setter ((setter-error 'degenerate? self)))
 
+   (min-x :initform most-negative-double-float
+	  :type double-float)
+
+   (min-y :initform most-negative-double-float
+	  :type double-float)
+
+   (min-z :initform most-negative-double-float
+	  :type double-float)
+
+   (max-x :initform most-positive-double-float
+	  :type double-float)
+
+   (max-y :initform most-positive-double-float
+	  :type double-float)
+
+   (max-z :initform most-positive-double-float
+	  :type double-float)
+   
+   (min :slot-class :virtual
+	:initarg :min
+	:initarg min
+	:type vec3
+	:getter ((vec3 (the min-x) (the min-y) (the min-z)))
+	:setter ((setf (the min-x) (vx value)
+		       (the min-y) (vy value)
+		       (the min-z) (vz value))
+		 (values)))
+
+   (max :slot-class :virtual
+	:initarg :max
+	:initarg max
+	:type vec3
+	:getter ((vec3 (the max-x) (the max-y) (the max-z)))
+	:setter ((setf (the max-x) (vx value)
+		       (the max-y) (vy value)
+		       (the max-z) (vz value))
+		 (values)))
+
    (center :slot-class :virtual
 	   :type vec3
 	   :getter ((v/ (v+ (the min) (the max)) 2.0d0))
-	   :setter ((setter-error 'center self)))))
+	   :setter ((setter-error 'center self)))
+
+   (location :slot-class :virtual
+	     :type vec3
+	     :getter ((the center))
+	     :setter ((setter-error 'location self)))))
 
 (defmethod print-object ((self bounding-box) stream)
   (print-unreadable-object (self stream :type t)
@@ -88,7 +153,7 @@
 		 :setter ((setter-error 'bounding-box self)))))
 
 (defclass placement-mixin (geometry-mixin)
-  ((origin :type point-mixin
+  ((origin :type t
 	   :initarg :origin
 	   :initarg origin
 	   :initform (make-instance 'point
@@ -100,9 +165,9 @@
 	     :type vec3
 	     :initarg :location
 	     :initarg location
-	     :getter ((the origin center))
+	     :getter ((the origin location))
 	     :setter ((declare (type vec3 value))
-		      (setf (the origin center) value)
+		      (setf (the origin location) value)
 		      (values)))))
 
 (defmethod initialize-instance :before ((self placement-mixin) &rest initargs)
@@ -213,7 +278,7 @@
 	   :initarg :matrix
 	   :initarg matrix
 	   :getter ((let ((y-axis (vc (the axis) (the ref-direction)))
-			  (location (the origin center)))
+			  (location (the origin location)))
 		      (mat4 (the ref-direction-x) (the ref-direction-y) (the ref-direction-z) (vx location)
 			    (vx y-axis)           (vy y-axis)           (vz y-axis)           (vy location)
 			    (the axis-x)          (the axis-y)          (the axis-z)          (vz location)
@@ -328,7 +393,7 @@
 		    (values)))
 
    (origin :slot-class :virtual
-	   :type point-mixin
+	   :type t
 	   :initarg :origin
 	   :initarg origin
 	   :getter ((the placement origin))
@@ -416,7 +481,7 @@
 	     :getter ((let* ((placement (the placement))
 			     (normal (send placement axis))
 			     (origin (send placement origin))
-			     (location (send origin center)))
+			     (location (send origin location)))
 			(vec4 (vx normal)
 			      (vy normal)
 			      (vz normal)
@@ -501,24 +566,24 @@
       :initarg z
       :initform 0.0d0
       :type double-float)
+
+   (center :slot-class :virtual
+	   :type vec3
+	   :initarg :center
+	   :initarg center
+	   :getter ((vec3 (the x) (the y) (the z)))
+	   :setter ((declare (type vec3 value))
+		      (setf (the x) (vx value)
+			    (the y) (vy value)
+			    (the z) (vz value))))
    
    (location :slot-class :virtual
 	     :type vec3
 	     :initarg :location
 	     :initarg location
-	     :getter ((vec3 (the x) (the y) (the z)))
-	     :setter ((declare (type vec3 value))
-		      (setf (the x) (vx value)
-			    (the y) (vy value)
-			    (the z) (vz value))))
-   
-   (center :slot-class :virtual
-	   :type vec3
-	   :initarg :center
-	   :initarg center
-	   :getter ((the location))
-	   :setter ((setf (the location) value)
-		    (values)))))
+	     :getter ((the center))
+	     :setter ((setf (the center) value)
+		      (values)))))
 
 (defmethod translate! ((self 3d-point-mixin) (offset vec3))
   (setf (the location) (v+ (the location) offset))
@@ -582,29 +647,29 @@
 	     :type vec2
 	     :initarg :location
 	     :initarg location
-	     :getter ((vec2 (the u) (the v)))
-	     :setter ((declare (type vec2 value))
-		      (setf (the u) (vx value)
-			    (the v) (vy value))))
+	     :getter ((transform (the center) (the plane)))
+	     :setter ((setter-error 'location self)))
    
    (center :slot-class :virtual
 	   :type vec3
-	   :getter ((transform (the location) (the plane)))
-	   :setter ((setter-error 'center self)))
+	   :getter ((vec2 (the u) (the v)))
+	   :setter ((declare (type vec2 value))
+		    (setf (the u) (vx value)
+			  (the v) (vy value))))
    
    (x :slot-class :virtual
       :type double-float
-      :getter ((vx (cl:the vec3 (the center))))
+      :getter ((vx (cl:the vec3 (the location))))
       :setter ((setter-error 'x self)))
 
    (y :slot-class :virtual
       :type double-float
-      :getter ((vy (cl:the vec3 (the center))))
+      :getter ((vy (cl:the vec3 (the location))))
       :setter ((setter-error 'y self)))
 
    (z :slot-class :virtual
       :type double-float
-      :getter ((vy (cl:the vec3 (the center))))
+      :getter ((vy (cl:the vec3 (the location))))
       :setter ((setter-error 'z self)))))
 
 (defclass 2d-point (2d-point-mixin entity-mixin)
@@ -619,9 +684,14 @@
   ())
 
 (defclass curve-mixin (geometry-mixin)
-  ((linetype :initform nil
+  ((%linetype :initform nil
+	      :type (or null linetype))
+   
+   (linetype :slot-class :virtual
 	     :initarg :linetype
-	     :initarg linetype)))
+	     :initarg linetype
+	     :getter ((or (the %linetype) (and (the layer) (the layer linetype?))))
+	     :setter ((setf (the %linetype) value)))))
 
 (defclass line-mixin (curve-mixin)
   ((degree :slot-class :virtual
@@ -641,24 +711,29 @@
 
    (bounding-box :slot-class :virtual
 		 :type bounding-box
-		 :getter ((let* ((ctail (the tail center))
-				 (chead (the head center))
-				 (max-x (max (vx ctail) (vx chead)))
-				 (max-y (max (vy ctail) (vy chead)))
-				 (max-z (max (vz ctail) (vz chead)))
-				 (min-x (min (vx ctail) (vx chead)))
-				 (min-y (min (vy ctail) (vy chead)))
-				 (min-z (min (vz ctail) (vz chead))))
+		 :getter ((let* ((tail-loc (the tail location))
+				 (head-loc (the head location))
+				 (max-x (max (vx tail-loc) (vx head-loc)))
+				 (max-y (max (vy tail-loc) (vy head-loc)))
+				 (max-z (max (vz tail-loc) (vz head-loc)))
+				 (min-x (min (vx tail-loc) (vx head-loc)))
+				 (min-y (min (vy tail-loc) (vy head-loc)))
+				 (min-z (min (vz tail-loc) (vz head-loc))))
 			    (make-bounding-box (vec3 min-x min-y min-z)
 					       (vec3 max-x max-y max-z))))
-		 :setter ((setter-error 'bounding-box self)))))
+		 :setter ((setter-error 'bounding-box self)))
+
+   (domain :slot-class :virtual
+	   :type cl:list
+	   :getter ((list 0.0d0 1.0d0))
+	   :setter ((setter-error 'domain self)))))
 
 (defclass line (3d-mixin line-mixin entity-mixin)
-  ((tail :type point-mixin
+  ((tail :type t
 	 :initarg :tail
 	 :initarg tail)
    
-   (head :type point-mixin
+   (head :type t
 	 :initarg :head
 	 :initarg head)
 
@@ -666,38 +741,38 @@
 	  :type vec3
 	  :initarg :start
 	  :initarg start
-	  :getter ((the tail center))
+	  :getter ((the tail location))
 	  :setter ((setf (the tail location) (cl:the vec3 value))))
 
    (end :slot-class :virtual
 	:type vec3
 	:initarg :end
 	:initarg end
-	:getter ((the head center))
+	:getter ((the head location))
 	:setter ((setf (the head location) (cl:the vec3 value))))
 
    (mid :slot-class :virtual
 	:type vec3
 	:initarg :mid
 	:initarg mid
-	:getter ((v+ (the tail center) (v* 0.5d0 (the span))))
+	:getter ((v+ (the tail location) (v* 0.5d0 (the span))))
 	:setter ((let ((new-span (v* 2.0d0 (v- (cl:the vec3 value) (the tail location)))))
 		   (setf (the span) new-span)
 		   (values))))
    
    (degenerate? :slot-class :virtual
 		:type boolean
-		:getter ((v= (the tail center) (the head center)))
+		:getter ((v= (the tail location) (the head location)))
 		:setter ((setter-error 'degenerate? self)))
    
    (span :slot-class :virtual
 	 :type vec3
 	 :initarg :span
 	 :initarg span
-	 :getter ((v- (cl:the vec3 (the head center)) (cl:the vec3 (the tail center))))
+	 :getter ((v- (cl:the vec3 (the head location)) (cl:the vec3 (the tail location))))
 	 :setter ((declare (type vec3 value))
 		  ;; this will fail if head is 2d-point
-		  (setf (the head center) (v+ (cl:the vec3 (the tail center)) value))))
+		  (setf (the head location) (v+ (cl:the vec3 (the tail location)) value))))
 
    (length :slot-class :virtual
 	   :type double-float
@@ -844,3 +919,295 @@
   (transform! (the tail) xform)
   (transform! (the head) xform)
   (values))
+
+(defclass circle (2d-mixin curve-mixin entity-mixin)
+  ((degenerate? :slot-class :virtual
+		:type boolean
+		:getter ((= 0.0d0 (the radius)))
+		:setter ((setter-error 'degenerate? self)))
+   
+   (closed? :slot-class :virtual
+	    :type boolean
+	    :getter (t)
+	    :setter ((setter-error 'closed? self)))
+   
+   (periodic? :slot-class :virtual
+	      :type boolean
+	      :getter (t)
+	      :setter ((setter-error 'periodic? self)))
+
+   (center-u :initform 0.0d0
+	     :type double-float
+	     :initarg :center-u
+	     :initarg center-u)
+
+   (center-v :initform 0.0d0
+	     :type double-float
+	     :initarg :center-v
+	     :initarg center-v)
+
+   (radius :initform 0.0d0
+	   :type double-float
+	   :initarg :radius
+	   :initarg radius)
+
+   (center :slot-class :virtual
+	   :type vec2
+	   :initarg :center
+	   :initarg center
+	   :getter ((vec2 (the center-u) (the center-v)))
+	   :setter ((setf (the center-u) (vx value)
+			  (the center-v) (vy value))
+		    (values)))
+
+   (location :slot-class :virtual
+	     :type vec2
+	     :initarg :location
+	     :initarg location
+	     :getter ((transform (the center) (the plane)))
+	     :setter ((setter-error 'location self)))))
+
+(defclass arc (2d-mixin curve-mixin entity-mixin)
+  ((orientation :initform :ccw
+		:type symbol
+		:initarg :orientation
+		:initarg orientation)
+
+   (degenerate? :slot-class :virtual
+		:type boolean
+		:getter ((or (= 0.0d0 (the radius))
+			     (= (the end-angle) (the start-angle))))
+		:setter ((setter-error 'degenerate? self)))
+
+   (closed? :slot-class :virtual
+	    :type boolean
+	    :getter ((= 2pi (- (the end-angle) (the start-angle))))
+	    :setter ((setter-error 'closed? self)))
+   
+   (periodic? :slot-class :virtual
+	      :type boolean
+	      :getter (t)
+	      :setter ((setter-error 'periodic? self)))
+
+   (center-u :initform 0.0d0
+	     :type double-float
+	     :initarg :center-u
+	     :initarg center-u)
+
+   (center-v :initform 0.0d0
+	     :type double-float
+	     :initarg :center-v
+	     :initarg center-v)
+
+   (radius :initform 0.0d0
+	   :type double-float
+	   :initarg :radius
+	   :initarg radius)
+
+   (start-angle :initform 0.0d0
+		:type double-float
+		:initarg :start-angle
+		:initarg start-angle)
+   
+   (end-angle :initform 2pi
+	      :type double-float
+	      :initarg :end-angle
+	      :initarg end-angle)
+
+   (delta-angle :slot-class :virtual
+		:type double-float
+		:getter ((let ((start (the start-angle))
+			       (end (the end-angle)))
+			   (if (eq (the orientation) :ccw)
+			       (if (> start end)
+				   (- (+ end 2pi) start)
+				   (- end start))
+			       (if (> end start)
+				   (- (+ start 2pi) end)
+				   (- start end)))))
+		:setter ((setf (the end-angle)
+			       (+ (the start-angle) (mod (cl:the double-float value) 2pi)))))
+
+   (domain :slot-class :virtual
+	   :type cl:list
+	   :getter ((let ((start (the start-angle))
+			  (end (the end-angle)))
+		      (list start end)))
+	   :setter ((setter-error 'domain self)))
+
+   (start-u :slot-class :virtual
+	    :type double-float
+	    :getter ((+ (the center-u) (* (the radius) (cos (the start-angle)))))
+	    :setter ())
+
+   (start-v :slot-class :virtual
+	    :type double-float
+	    :getter ((+ (the center-v) (* (the radius) (sin (the start-angle)))))
+	    :setter ())
+
+   (start-point :slot-class :virtual
+		:type vec2
+		:getter ((vec2 (the start-u) (the start-v)))
+		:setter ())
+
+   (end-u :slot-class :virtual
+	  :type double-float
+	  :getter ((+ (the center-u) (* (the radius) (cos (the end-angle)))))
+	  :setter ())
+
+   (end-v :slot-class :virtual
+	  :type double-float
+	  :getter ((+ (the center-v) (* (the radius) (sin (the end-angle)))))
+	  :setter ())
+
+   (end-point :slot-class :virtual
+	      :type vec2
+	      :getter ((vec2 (the end-u) (the end-v)))
+	      :setter ())))
+
+(defmacro %circle-from-3pts-code ((start-point interior-point end-point) &body body)
+  ;; https://web.archive.org/web/20161011113446/http://www.abecedarical.com/zenosamples/zs_circle3pts.html
+  `(progn
+     (when (or (v= ,start-point ,interior-point)
+	       (v= ,interior-point ,end-point)
+	       (v= ,start-point ,end-point))
+       (error "points are degenerate"))
+     (labels ((det2x2 (a b
+		       c d)
+		(- (* a d) (* b c)))
+	      (det3x3 (a b c
+		       d e f
+		       g h i)
+		(+ (* a (det2x2 e f
+				h i))
+		   (- (* b (det2x2 d f
+				   g i)))
+		   (* c (det2x2 d e
+				g h)))))
+	     
+       (let* ((a22 (vx ,start-point))
+	      (a23 (vy ,start-point))
+	      (a21 (+ (* a22 a22) (* a23 a23)))
+	      (a24 1.0d0)
+	      (a32 (vx ,interior-point))
+	      (a33 (vy ,interior-point))
+	      (a31 (+ (* a32 a32) (* a33 a33)))
+	      (a34 1.0d0)
+	      (a42 (vx ,end-point))
+	      (a43 (vy ,end-point))
+	      (a41 (+ (* a42 a42) (* a43 a43)))
+	      (a44 1.0d0)
+	      (m11 (det3x3 a22 a23 a24
+			   a32 a33 a34
+			   a42 a43 a44)))
+	     
+	 (when (= 0.0d0 m11)
+	   (error "points are collinear"))
+
+	 (let* ((m12 (det3x3 a21 a23 a24
+			     a31 a33 a34
+			     a41 a43 a44))
+		(m13 (det3x3 a21 a22 a24
+			     a31 a32 a34
+			     a41 a42 a44))
+		(m14 (det3x3 a21 a22 a23
+			     a31 a32 a33
+			     a41 a42 a43))
+		(center-u (* 0.5 (/ m12 m11)))
+		(center-v (* -0.5 (/ m13 m11)))
+		(radius (sqrt (+ (* center-u center-u) (* center-v center-v) (/ m14 m11))))
+		(center (vec2 center-u center-v))
+		(start-to-interior (vec3 (- (vx interior-point) (vx start-point))
+					 (- (vy interior-point) (vx start-point))
+					 0))
+		(interior-to-end (vec3 (- (vx end-point) (vx interior-point))
+				       (- (vy end-point) (vy interior-point))
+				       0))
+		(clockwise? (minusp (vz (vc start-to-interior interior-to-end)))))
+
+	   ,@body)))))
+
+(defmethod initialize-instance ((self arc) &rest initargs &key &allow-other-keys)
+  (let ((start-point (or (getf initargs :start-point)
+			 (getf initargs 'start-point)))
+	(end-point (or (getf initargs :end-point)
+		       (getf initargs 'end-point)))
+	(interior-point (or (getf initargs :interior-point)
+			    (getf initargs 'interior-point)))
+	(start-angle (or (getf initargs :start-angle)
+			 (getf initargs 'start-angle)))
+	(end-angle (or (getf initargs :end-angle)
+		       (getf initargs 'end-angle)))
+	(center (or (getf initargs :center)
+		    (getf initargs 'center)))
+	(radius (or (getf initargs :radius)
+		    (getf initargs 'radius)))
+	(orientation (or (getf initargs :orientation)
+			 (getf initargs 'orientation))))			       
+
+    (cond ((and start-point interior-point end-point)
+
+	   (when (or start-angle end-angle center radius)
+	     (error "arc specification is overconstrained ~S
+choose start-point, interior-point, end-point OR
+choose center, radius, start-angle, end-angle, orientation not BOTH." initargs))	   
+
+	   (%circle-from-3pts-code (start-point interior-point end-point)
+	     
+	     (let* ((center-to-start (v- start-point center))
+		    (center-to-end (v- end-point center))
+		    (start-angle (atan (vy center-to-start) (vx center-to-start)))
+		    (end-angle (atan (vy center-to-end) (vx center-to-end))))
+
+	       (when (minusp start-angle)
+		 (incf start-angle 2pi))
+
+	       (if clockwise?
+		   (when (minusp end-angle)
+		     (incf end-angle 2pi))
+		   (when (not (plusp end-angle))
+		     (incf end-angle 2pi)))
+	       
+	       (call-next-method self
+				 :orientation (if clockwise?
+						  :cw
+						  :ccw)
+				 :radius radius
+				 :center-u center-u
+				 :center-v center-v
+				 :start-angle start-angle
+				 :end-angle end-angle))))
+	  
+	  ((and center radius start-angle end-angle)
+
+	   (unless orientation
+	     (setq orientation :ccw))
+
+	   (assert (or (eq orientation :cw)
+		       (eq orientation :ccw)))
+
+	   (setf start-angle (mod start-angle 2pi))
+	   (setf end-angle (mod end-angle 2pi))
+
+	   (when (minusp start-angle)
+	     (incf start-angle 2pi))
+	   
+	   (when (minusp end-angle)
+	     (incf end-angle 2pi))
+	   
+	   (call-next-method self
+			     :orientation orientation
+			     :radius radius
+			     :center-u (vx center)
+			     :center-v (vy center)
+			     :start-angle start-angle
+			     :end-angle end-angle)))))
+	      
+		   
+	  
+		   
+			       
+
+  
+
+   
