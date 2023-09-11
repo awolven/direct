@@ -920,7 +920,10 @@
   (transform! (the head) xform)
   (values))
 
-(defclass circle (2d-mixin curve-mixin entity-mixin)
+(defclass conic-section-mixin (curve-mixin)
+  ())
+
+(defclass circle (2d-mixin conic-section-mixin entity-mixin)
   ((degenerate? :slot-class :virtual
 		:type boolean
 		:getter ((= 0.0d0 (the radius)))
@@ -967,7 +970,154 @@
 	     :getter ((transform (the center) (the plane)))
 	     :setter ((setter-error 'location self)))))
 
-(defclass arc (2d-mixin curve-mixin entity-mixin)
+(defclass ellipse (2d-mixin conic-section-mixin entity-mixin)
+  ((degenerate? :slot-class :virtual
+		:type boolean
+		:getter ((or (= 0.0d0 (the semi-major-axis))
+			     (= 0.0d0 (the semi-minor-axis))))
+		:setter ((setter-error 'degenerate? self)))
+   
+   (closed? :slot-class :virtual
+	    :type boolean
+	    :getter (t)
+	    :setter ((setter-error 'closed? self)))
+   
+   (periodic? :slot-class :virtual
+	      :type boolean
+	      :getter (t)
+	      :setter ((setter-error 'periodic? self)))
+
+   (circular? :slot-class :virtual
+	      :type boolean
+	      :getter ((and (= (the focus1-u) (the focus2-u))
+			    (= (the focus1-v) (the focus1-v))))
+	      :setter ((setter-error 'circular? self)))
+   
+   (focus1-u :initform 0.0d0
+	     :initarg :focus1-u
+	     :initarg focus1-u
+	     :type double-float)
+
+   (focus1-v :initform 0.0d0
+	     :initarg :focus1-v
+	     :initarg focus1-v
+	     :type double-float)
+
+   (focus2-u :initform 0.0d0
+	     :initarg :focus2-u
+	     :initarg :focus2-u
+	     :type double-float)
+
+   (focus2-v :initform 0.0d0
+	     :initarg :focus2-v
+	     :initarg focus2-v
+	     :type double-float)
+
+   (focus1 :slot-class :virtual
+	   :type vec2
+	   :initarg :focus1
+	   :initarg focus1
+	   :getter ((vec2 (the focus1-u) (the focus1-v)))
+	   :setter ((setf (the focus1-u) (vx value)
+			  (the focus1-v) (vy value))
+		    (values)))
+
+   (focus2 :slot-class :virtual
+	   :type vec2
+	   :initarg :focus2
+	   :initarg focus2
+	   :getter ((vec2 (the focus2-u) (the focus2-v)))
+	   :setter ((setf (the focus2-u) (vx value)
+			  (the focus2-v) (vy value))
+		    (values)))
+
+   (focal-distance :slot-class :virtual
+		   :type double-float
+		   :getter ((vlength (v- (the focus1) (the center))))
+		   :setter ())
+   
+   (semi-major-axis :initform 1.0d0
+		    :type double-float
+		    :initarg :semi-major-axis
+		    :initarg semi-major-axis)
+
+   (major-axis :slot-class :virtual
+	       :type double-float
+	       :getter ((* 2 (the semi-major-axis)))
+	       :setter ())
+   
+   (semi-minor-axis :slot-class :virtual
+		    :type double-float
+		    :getter ((sqrt (- (expt (the semi-major-axis) 2) (expt (the focal-distance) 2))))
+		    :setter ())
+   
+   (minor-axis :slot-class :virtual
+	       :type double-float
+	       :getter ((* 2 (the semi-minor-axis)))
+	       :setter ())
+
+   (eccentricity :slot-class :virtual
+		 :type double-float
+		 :getter ((/ (sqrt (- (expt (the semi-major-axis) 2)
+				      (expt (the semi-minor-axis) 2)))
+			     (the semi-major-axis)))
+				   
+		 :setter ())
+
+   (h :slot-class :virtual
+      :type double-float
+      ;; here is an example of where we would want caching
+      :getter ((/ (expt (- (the semi-major-axis) (the semi-minor-axis)) 2)
+		  (expt (+ (the semi-major-axis) (the semi-minor-axis)) 2)))
+      :setter ((setter-error 'h self)))
+
+   (length :slot-class :virtual
+	   :type double-float
+	   :getter ((* pi (+ (the semi-major-axis) (the semi-minor-axis))
+		       (let ((h (the h)))
+			 (loop for n from 0 below 10
+			       sum (* (binomial-coefficient-0.5 n) (expt h n))))))
+	   :setter ())
+		    
+
+   (center :slot-class :virtual
+	   :type vec2
+	   :initarg :center
+	   :initarg center
+	   :getter ((v* 0.5d0 (v+ (the focus1) (the focus2))))
+	   :setter ((let* ((old-center (the center))
+			   (shift (v- value old-center)))
+		      (setf (the focus1) (v+ (the focus1) shift)
+			    (the focus2) (v+ (the focus2) shift))
+		      (values))))
+
+   (location :slot-class :virtual
+	     :type vec2
+	     :initarg :location
+	     :initarg location
+	     :getter ((transform (the center) (the plane)))
+	     :setter ((setter-error 'location self)))))
+
+(defun binomial-coefficient-0.5 (k)
+  (/ (gamma-m+1/2 1/2) (* (factorial k) (gamma-m+1/2 (- 1/2 k)))))
+
+(defun factorial (n)
+  (if (= 0 n)
+      1
+      (* n (factorial (1- n)))))
+
+
+
+(defun gamma-m+1/2 (m+1/2)
+  (let ((m (- m+1/2 1/2)))
+    (labels ((foo (n)
+	       (if (< n 1)
+		   1
+		   (* n (foo (- n 2))))))
+      (* #.(sqrt pi) (/ (foo (1- (* 2 m))) (expt 2 m))))))
+  
+
+(defclass arc (2d-mixin conic-section-mixin entity-mixin)
   ((orientation :initform :ccw
 		:type symbol
 		:initarg :orientation
@@ -1202,6 +1352,118 @@ choose center, radius, start-angle, end-angle, orientation not BOTH." initargs))
 			     :center-v (vy center)
 			     :start-angle start-angle
 			     :end-angle end-angle)))))
+
+(defclass bezier-curve-mixin (geometry-mixin)
+  ((degree :type fixnum
+	   :initarg :degree
+	   :initarg degree)
+   
+   (control-points :initarg :control-points
+		   :initarg control-points)
+
+   (domain :slot-class :virtual
+	   :type cl:list
+	   :getter ((list 0.0d0 1.0d0))
+	   :setter ((setter-error 'domain self)))
+
+   (degenerate? :slot-class :virtual
+		:type boolean
+		:getter ((let ((cpoints (the control-points)))
+			   (loop for i from 0 below (the degree)
+				 always (v= (elt cpoints i) (elt cpoints (1+ i))))))
+		:setter ((setter-error 'degenerate? self)))
+
+   (closed? :slot-class :virtual
+	    :type boolean
+	    :getter ((v= (elt (the control-points) 0) (elt (the control-points) (the degree))))
+	    :setter ((setter-error 'closed? self)))
+   
+   (periodic? :slot-class :virtual
+	      :type boolean
+	      :getter (nil)
+	      :setter ((setter-error 'periodic? self)))))
+
+(defclass bezier-curve (3d-mixin bezier-curve-mixin entity-mixin)
+  ())
+
+(defclass 2d-bezier-curve (2d-mixin bezier-curve-mixin entity-mixin)
+  ())
+
+(defmethod initialize-instance ((self bezier-curve-mixin) &rest initargs)
+  (let ((degree (or (getf initargs :degree)
+		    (getf initargs 'degree)))
+	(cpoints (or (getf initargs :control-points)
+		     (getf initargs 'control-points))))
+
+    (assert cpoints)
+
+    (if degree
+	(assert (= (1+ degree) (length cpoints)))
+	(setq degree (1- (length cpoints))))
+    
+    (when (listp cpoints)
+      (setq cpoints (coerce cpoints 'vector)))
+    
+    (call-next-method self :degree degree :control-points cpoints)))
+
+(defmethod initialize-instance :after ((self bezier-curve) &rest initargs)
+  (declare (ignore initargs))
+  (let ((cpoints (the control-points)))
+    (assert
+     (loop for i from 0 to (the degree)
+	   always (typep (elt cpoints i) 'vec3)))
+    (values)))
+
+(defmethod initialize-instance :after ((self 2d-bezier-curve) &rest initargs)
+  (declare (ignore initargs))
+  (let ((cpoints (the control-points)))
+    (assert
+     (loop for i from 0 to (the degree)
+	   always (typep (elt cpoints i) 'vec2)))
+    (values)))
+
+(declaim (ftype (function (fixnum double-float) (simple-array double-float)) bernstein))
+(defun bernstein (n u)
+  (declare (type fixnum n) (type double-float u))
+  (declare (optimize (speed 3) (safety 1)))
+  (let ((B (make-array (1+ n) :element-type 'double-float :initial-element 1.0d0))
+	(u1 (- 1.0d0 u))
+	(saved 0.0d0)
+	(temp 0.0d0))
+    (declare (type double-float saved temp))
+    (loop for j from 1 to n
+	  do (setq saved 0.0d0)
+	     (loop for k from 0 below j
+		   do (setq temp (aref B k))
+		      (setf (aref B k) (+ saved (* u1 temp)))
+		      (setq saved (* u temp)))
+	     (setf (aref B j) saved)
+	  finally (return B))))
+
+(defmethod evaluate ((self 2d-bezier-curve) (parameter real))
+  (declare (optimize (speed 3) (safety 3)))
+  (setq parameter (coerce parameter 'double-float))
+  (let* ((n (the degree)))
+    (declare (type fixnum n))
+    (let* ((B (bernstein n parameter))
+	   (C (3dm.d::%vec2 0.0d0 0.0d0))
+	   (P (the control-points)))
+      (loop for k from 0 to n
+	    do (setq C (v+ (cl:the vec2 C) (v* (cl:the double-float (aref B k)) (cl:the vec2 (elt P k)))))
+	    finally (return C)))))
+
+(defmethod evaluate ((self bezier-curve) (parameter real))
+  (declare (optimize (speed 3) (safety 3)))
+  (setq parameter (coerce parameter 'double-float))
+  (let* ((n (the degree)))
+    (declare (type fixnum n))
+    (let* ((B (bernstein n parameter))
+	   (C (3dm.d::%vec3 0.0d0 0.0d0 0.0d0))
+	   (P (the control-points)))
+      (loop for k from 0 to n
+	    do (setq C (v+ (cl:the vec3 C) (v* (cl:the double-float (aref B k)) (cl:the vec3 (elt P k)))))
+	    finally (return C)))))
+	
 	      
 		   
 	  
