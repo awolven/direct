@@ -47,9 +47,10 @@
 	    :initarg :pattern
 	    :initarg pattern)))
 
-(defclass geometry-mixin ()
-  ;; these objects are objects with drawable geometry
-  ((%group-id :initform nil)
+(defclass graphical-mixin ()
+  ;; these objects are objects with drawable representation
+  ((krma.gui::object-id :initform (krma.gui::new-object-id))
+   (%group-id :initform nil)
    (%prim-ids :initform nil)
    
    (%hidden? :initform nil
@@ -75,7 +76,7 @@
 	  :getter ((or (the %color) (and (the layer) (the layer color))))
 	  :setter ((setf (the %color) value)))))
 
-(defclass bounding-box (geometry-mixin)
+(defclass bounding-box (graphical-mixin)
   ((hidden? :initform t
 	    :type boolean)
 
@@ -143,8 +144,17 @@
 
 (defun make-bounding-box (min max)
   (declare (type vec3 min max))
-  (make-instance 'bounding-box :min min :max max))   
-   
+  (make-instance 'bounding-box :min min :max max))
+
+(defclass geometry-mixin (graphical-mixin)
+  ())
+
+(defgeneric copy (geometry))
+(defgeneric mirror (geometry mirror))
+(defgeneric translate! (geometry vector))
+(defgeneric rotate! (geometry axis vector))
+(defgeneric scale! (geometry vector))
+(defgeneric transform! (geometry transform))
 
 (defclass point-mixin (geometry-mixin)
   ((bounding-box :slot-class :virtual
@@ -298,6 +308,15 @@
 			      (the ref-direction) (vec3 ref-dir-x ref-dir-y ref-dir-z)
 			      (the origin location) (vec3 loc-x loc-y loc-z))
 			(values)))))))
+
+(defmethod copy ((self axis2-placement-3d))
+  )
+
+(defmethod mirror ((self axis2-placement-3d) mirror)
+  (declare (ignorable mirror))
+  )
+
+;;(defmethod reverse! (self))
 
 (defmethod translate! ((self axis2-placement-3d) (offset vec3))
   (setf (the location) (v+ (the location) offset))
@@ -465,7 +484,13 @@
   ())
 
 (defclass plane (3d-mixin relative-coordinate-system-mixin geometry-mixin entity-mixin)
-  ((normal :slot-class :virtual
+  ((u-closed?)
+   (v-closed?)
+   (u-periodic?)
+   (v-periodic?)
+   (u-period)
+   (v-period)
+   (normal :slot-class :virtual
 	   :type vec3
 	   :initarg :normal
 	   :initarg normal
