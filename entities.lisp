@@ -419,9 +419,9 @@
   (declare (ignorable curve surface))
   (values))
 
-(defgeneric intersection-2 (thing1 thing2))
+(defgeneric intersection2 (thing1 thing2))
 
-(defgeneric intersection-3 (thing1 thing2 thing3))
+(defgeneric intersection3 (thing1 thing2 thing3))
 
 (defclass intersection-of-three-implicit-surfaces-mixin (intersection-mixin point-mixin)
   ((surface-1)
@@ -1326,7 +1326,7 @@
 	:setter ((declare (type vec3 value))
 		 (setf (the end-x) (vx value)
 		       (the end-y) (vy value)
-		       (the end-z) (vy value))))
+		       (the end-z) (vz value))))
 
    (mid :slot-class :virtual
 	:type vec3
@@ -1429,7 +1429,7 @@
 	:getter ((vec2 (the end-u) (the end-v)))
 	:setter ((declare (type vec2 value))
 		 (setf (the end-u) (vx value)
-		       (the end-v) (vx value))
+		       (the end-v) (vy value))
 		 (values)))
 
    (mid :slot-class :virtual
@@ -1788,7 +1788,7 @@
       (subseq hull 0 k))))
 
 (defun transform-polynomial (polynomial a b)
-  ;; transforms variable of polynomial to (a + s*(b-a)) and returns polynomial of s in monomial basis
+  ;; transforms variable of polynomial to x=(a + s*(b-a)) and returns polynomial of s in monomial basis
   (let* ((n+1 (length polynomial))
 	 (new-poly (make-array n+1 :initial-element 0)))
     (if (= a 0)
@@ -1810,14 +1810,234 @@
 				intermediate))))
     new-poly))
 
-(defun roots-of-2d-bezier (control-points start end epsilon expected-number-of-roots)
-  (let ((intervals (isolate-roots-of-2d-bezier control-points start end epsilon expected-number-of-roots)))
-    (unless intervals
-      (return-from roots-of-2d-bezier nil))
-    (apply #'append
-	   (mapcar #'(lambda (interval)
-		       (converge-on-root control-points (car interval) (cadr interval) epsilon))
-		   intervals))))
+(defun isolate-roots-vas-cf (f)
+  "procedure to return isolated root intervals based on Vincent's method"
+  ;;Improving the Performance of the Continued Fractions
+  ;;Method Using New Bounds of Positive Roots
+  ;;A. G. Akritas, A. W. Strzebonski, P. S. Vigklas
+  ;;https://www.semanticscholar.org/reader/87211188ec3548cd115e82442daf2513d5c5aa9a p.267-268
+
+  (let* ((p (map 'vector #'rationalize f))
+	 (denoms (map 'list #'denominator p))
+	 (gcd (apply #'gcd denoms)))
+
+    (setq p (map 'vector #'(lambda (rat) (* rat gcd)) p))
+	
+    (flet ((evaluate-polynomial (p x)
+	     (loop for i from 0 below (length p)
+		   sum (* (aref p i) (expt x i))))
+
+	   (intrv (a b c d)
+	     (let ((min)
+		   (max))
+	       (when (zerop c)
+		 (setq min (/ b d))
+		 (setq max (cauchy-bound f)))
+	       (when (zerop d)
+		 (setq min (/ a c))
+		 (setq max (cauchy-bound f)))
+
+	       (if min
+		   (list min max)
+		   (list (min (/ a c) (/ b d)) (max (/ a c) (/ b d))))))
+
+	   (cauchy-bound (p)
+	     (let ((temp (map 'list #'(lambda (c)
+					(abs (/ c (aref p (1- (length p))))))
+			      p)))
+	       (1+ (apply #'max temp)))))
+  
+      (let ((root-list)
+	    (interval-stack)
+	    alpha
+	    a b c d s
+	    a1 b1 c1 d1 r p1 s1 
+	    a2 b2 c2 d2 p2 s2)
+
+	(tagbody
+	 step-1
+
+	   (setq root-list ())
+
+	   (setq s (descartes-rule-of-signs p))
+
+	   (when (zerop s)
+	     (return-from isolate-roots-vas-cf nil))
+	
+	   (when (= 1 s)
+	     (return-from isolate-roots-vas-cf (list (list 0 (cauchy-bound f)))))
+
+	   (push (list 1 0 0 1 p s) interval-stack)
+
+	 step-2
+	   (unless interval-stack
+	     (go exit))
+	   
+	   (multiple-value-setq (a b c d p s) (values-list (pop interval-stack)))
+
+	   (print p)
+
+	 step-3
+	   (setq alpha (/ (cauchy-bound p)))
+
+	   (print alpha)
+
+	 step-4
+
+	   (when (> alpha 16)
+	     (setq p (transform-polynomial p 0 alpha))
+	     (setq a (* alpha a))
+	     (setq c (* alpha c))
+	     (setq alpha 1))
+
+	 step-5
+
+	   (when (>= alpha 1)
+	     (setq p (transform-polynomial p alpha (1+ alpha)))
+	     (setq b (+ (* alpha a) b))
+	     (setq d (+ (* alpha c) d)))
+
+	   (print p)
+       
+	   (when (zerop (evaluate-polynomial p 0))
+	     (let ((root (/ b d)))
+	       (setq root-list (nconc root-list (list (list root root))))
+	       (break)
+	       (setq p (subseq p 1))))
+
+	   (setq s (descartes-rule-of-signs p))
+	   
+	   (when (zerop s)
+	     (go step-2))
+	   
+	   (when (= 1 s)
+	     (setq root-list (nconc root-list (list (intrv a b c d))))
+	     (go step-2))
+
+	 step-6
+
+	   (setq p1 (transform-polynomial p 1 2))
+	   (print p1)
+	   (setq a1 a)
+	   (setq b1 (+ a b))
+	   (setq c1 c) ;; typo in paper?
+	   (setq d1 (+ c d))
+	   (setq r 0)
+
+	   (when (zerop (evaluate-polynomial p1 0))
+	     (let ((root (/ b1 d1)))
+	       (setq root-list (nconc root-list (list (list root root))))
+	       (setq p1 (subseq p1 1))
+	       (setq r 1)))
+
+	   (setq s1 (descartes-rule-of-signs p1))
+
+	   (setq s2 (- s s1 r))
+
+	   (setq a2 b)
+	   (setq b2 (+ a b))
+	   (setq c2 d)
+	   (setq d2 (+ c d))
+
+	 step-7
+
+	   ;;(setq p2 p1)
+
+	   (print s2)
+	   
+	   (when (> s2 1)
+	     (setq p2 (transform-polynomial (reverse p) 1 2))
+	     
+	     (when (zerop (evaluate-polynomial p2 0))
+	       (setq p2 (subseq p2 1)))
+	     
+	     (setq s2 (descartes-rule-of-signs p2))
+	   
+	     (print s1)
+	     (print s2)
+	     
+	     ;;step-8
+	     (when (< s1 s2)
+	       (let ((a-temp a1)
+		     (b-temp b1)
+		     (c-temp c1)
+		     (d-temp d1)
+		     (p-temp p1)
+		     (s-temp s1))
+		 (setq a1 a2
+		       b1 b2
+		       c1 c2
+		       d1 d2
+		       p1 p2
+		       s1 s2)
+		 (setq a2 a-temp
+		       b2 b-temp
+		       c2 c-temp
+		       d2 d-temp
+		       p2 p-temp
+		       s2 s-temp)))
+	   
+	     ;;step-9
+
+	     (when (zerop s1)
+	       (go step-2))
+	   
+	     (if (= 1 s1)
+		 (setq root-list (nconc root-list (list (intrv a1 b1 c1 d1))))
+		 (push (list a1 b1 c1 d1 p1 s1) interval-stack))
+	     
+	     ;;step-10
+
+	     (when (zerop s2)
+	       (go step-2))
+
+	     (if (= 1 s2)
+		 (setq root-list (nconc root-list (list (intrv a2 b2 c2 d2))))
+		 (push (list a2 b2 c2 d2 p2 s2) interval-stack))
+
+	     (go step-2))
+
+	   (when (zerop s1)
+	     (go step-2))
+	   
+	   (if (= 1 s1)
+	       (setq root-list (nconc root-list (list (intrv a1 b1 c1 d1))))
+	       (push (list a1 b1 c1 d1 p1 s1) interval-stack))
+
+	   (go step-2)
+	   
+	 exit)
+	
+	(mapcar #'(lambda (entry)
+		    (list (/ (car entry) gcd) (/ (cadr entry) gcd))) root-list)))))
+
+       
+	 
+       
+		 
+	 
+	
+
+       
+       
+	 
+       
+	 
+	 
+       
+	   
+
+       
+
+	 
+       
+    
+
+(defun roots-of-2d-bezier (control-points intervals epsilon)
+  (apply #'append
+	 (mapcar #'(lambda (interval)
+		     (converge-on-root control-points (car interval) (cadr interval) epsilon))
+		 intervals)))
 
 (defun converge-on-root (control-points start end epsilon)
   (if (< (- end start) epsilon)
@@ -1831,30 +2051,22 @@
 	       (converge-on-root control-points start middle epsilon)
 	       (converge-on-root control-points middle end epsilon))))))
 
+(defun evaluate-polynomial (p x)
+  (loop for i from 0 below (length p)
+	sum (* (aref p i) (expt x i))))
 
-(defun isolate-roots-of-2d-bezier (control-points start end epsilon expected-number-of-roots)
-  (flet ((has-sign-change? (a b)
-	   (let ((val-a (decasteljau1-2d control-points a))
-		 (val-b (decasteljau1-2d control-points b)))
-	     (not (= (signum (vy val-a)) (signum (vy val-b)))))))
-    
-    (let ((isolated-intervals ())
-	  (intervals (list (list start end))))
+(defun converge-on-root2 (polynomial start end epsilon)
+  (if (< (- end start) epsilon)
+      (list (coerce (/ (+ start end) 2) 'double-float))
+      (flet ((has-sign-change? (a b)
+	       (let ((val-a (evaluate-polynomial polynomial a))
+		     (val-b (evaluate-polynomial polynomial b)))
+		 (not (= (signum val-a) (signum val-b))))))
+	(let ((middle (/ (+ start end) 2)))
+	  (if (has-sign-change? start middle)
+	      (converge-on-root2 polynomial start middle epsilon)
+	      (converge-on-root2 polynomial middle end epsilon))))))
 
-      (do ()
-	  ((null intervals))
-
-	(destructuring-bind (a b) (pop intervals)
-o	  (cond ((has-sign-change? a b)
-		 (push (list a b) isolated-intervals))
-		(t (let ((middle (/ (+ a b) 2)))
-		     (unless (< (- b a) epsilon)
-		       (setf intervals (nconc intervals (list (list a middle) (list middle b))))))))
-	  (when (= (length isolated-intervals) expected-number-of-roots)
-	    ;; early out.
-	    (return-from isolate-roots-of-2d-bezier isolated-intervals))))
-
-      (return-from isolate-roots-of-2d-bezier isolated-intervals))))
 
 (defun ray-intersects-line-segment? (origin direction point-a point-b)
   (let* ((p2 (v+ origin direction))
@@ -1878,6 +2090,15 @@ o	  (cond ((has-sign-change? a b)
 	  (when (and (<= 0 s 1) (<= 0 u 1))
 	    s)))))
 
+(defun intersection-2d-line/2d-line (line-a line-b)
+  (when (eq (send line-a plane) (send line-b plane))
+    (let ((intersection (ray-intersects-line-segment? (send line-a start) (send line-a span) (send line-b start) (send line-b end))))
+      (when intersection
+	(evaluate1 line-a intersection)))))
+
+(defmethod intersection2 ((line-a 2d-line) (line-b 2d-line))
+  (intersection-2d-line/2d-line line-a line-b))	
+
 (defun convex-polygon-domain (polygon)
   (loop for i from 0 below (1- (length polygon))
 	with a = nil
@@ -1888,29 +2109,189 @@ o	  (cond ((has-sign-change? a b)
 		   (setq b (ray-intersects-line-segment? (vec2 0 0) (vec2 1 0) (elt polygon i) (elt polygon (1+ i))))
 		   (return (values (min a b) (max a b)))))
 	finally (return (and b (values (min a b) (max a b))))))
+
+(defun descartes-rule-of-signs (polynomial)
+  (let ((n 0)
+	(last-sign)
+	(next-sign))
+    
+    (do ((i 0 (1+ i)))
+	((= i (1- (length polynomial))))
+
+      (unless (zerop (elt polynomial i))
+	(setq last-sign (signum (elt polynomial i))))
+
+      (unless (zerop (elt polynomial (1+ i)))
+	(setq next-sign (signum (elt polynomial (1+ i))))
+
+	(when last-sign
+	  (when (/= last-sign next-sign)
+	    (incf n)))))
+    n))
        
+
+(defun roots (polynomial a b &optional (epsilon 1.0d-20))
+  (let* ((transformed (transform-polynomial polynomial a b))
+	 (intervals (isolate-roots-vas-cf transformed)))
+    (sort (mapcar #'(lambda (s) (+ a (* s (- b a))))
+		  (apply #'append
+			 (mapcar #'(lambda (interval)
+				     (converge-on-root2 transformed (car interval) (cadr interval) epsilon))
+				 intervals)))
+	  #'<)))
+    
+
 (defun roots-by-projected-polyhedron (polynomial a b &optional (epsilon 1.0d-15))
   (let* ((degree (1- (length polynomial)))
 	 (transformed (transform-polynomial polynomial a b))
 	 (bernstein-basis-coefficients (monomial-to-bernstein transformed))
-	 (expected-number-of-roots (loop for i from 1 below (length bernstein-basis-coefficients)
-					 with sign = (signum (elt bernstein-basis-coefficients 0))
-					 when (/= sign (setq sign (signum (elt bernstein-basis-coefficients i))))
-					   sum 1))
 	 (control-points (let ((array (make-array (1+ degree))))
 			   (loop for i from 0 to degree
 				 do (setf (aref array i) (vec2 (/ i degree) (aref bernstein-basis-coefficients i))))
 			   array))
+	 (intervals (isolate-roots-vas-cf (map 'vector #'vy control-points)))
 	 (convex-hull (convex-hull--2d control-points)))
-    (multiple-value-bind (start end) (convex-polygon-domain convex-hull)
-      (unless end
-	(return-from roots-by-projected-polyhedron nil))
-      (let ((roots (roots-of-2d-bezier control-points start end epsilon expected-number-of-roots)))
-	(sort (mapcar #'(lambda (s) (+ a (* s (- b a)))) roots) #'<)))))
+    ;;(multiple-value-bind (start end) (convex-polygon-domain convex-hull)
+    ;;(unless end
+    ;;(return-from roots-by-projected-polyhedron nil))
+    (let ((roots (roots-of-2d-bezier control-points intervals epsilon)))
+      (sort (mapcar #'(lambda (s) (+ a (* s (- b a)))) roots) #'<))))
+
+(defun intersection-2d-line/circle-1 (line circle)
+  (let* ((p0 (send line start))
+	 (p1 (send line end))
+	 (c (send circle center))
+	 (x0 (vx p0))
+	 (y0 (vy p0))
+	 (x1 (vx p1))
+	 (y1 (vy p1))
+	 (xc (vx c))
+	 (yc (vy c))
+	 (radius (send circle radius))
+	 (C0 (+ (- (expt radius 2))
+		(expt x0 2) (- (* 2 x0 xc)) (expt xc 2)
+		(expt y0 2) (- (* 2 y0 yc)) (expt yc 2)))
+	 (C1 (+ (- (* 2 (expt x0 2))) (* 2 x0 x1) (* 2 x0 xc) (- (* 2 x1 xc))
+		(- (* 2 (expt y0 2))) (* 2 y0 y1) (* 2 y0 yc) (- (* 2 y1 yc))))
+	 (C2 (+ (expt x0 2) (- (* 2 x0 x1)) (expt x1 2)
+		(expt y0 2) (- (* 2 y0 y1)) (expt y1 2))))
+    ;; could use quadratic formula here.
+    ;; returns intersection in parameter space of line
+    (roots-by-projected-polyhedron (vector C0 C1 C2) 0 1)))
+
+(defun intersection-2d-line/circle (line circle)
+  (when (eq (send line plane) (send circle plane))
+    (let ((roots (intersection-2d-line/circle-1 line circle)))
+      (apply #'values (mapcar #'(lambda (root) (evaluate1 line root)) roots)))))
+
+(defmethod intersection2 ((line 2d-line) (circle circle))
+  (intersection-2d-line/circle line circle))
+
+(defmethod intersection2 ((circle circle) (line 2d-line))
+  (intersection-2d-line/circle line circle))
   
+(defun intersection-2d-line/ellipse-1 (line ellipse)
+  (let* ((p0 (send line start))
+	 (p1 (send line end))
+	 (c (send ellipse center))
+	 (a (send ellipse semi-major-axis))
+	 (b (send ellipse semi-minor-axis))
+	 (a^2 (expt a 2))
+	 (b^2 (expt b 2))
+	 (x0 (vx p0))
+	 (y0 (vy p0))
+	 (x1 (vx p1))
+	 (y1 (vy p1))
+	 (xc (vx c))
+	 (yc (vy c))
+	 (C0 (1- (+ (/ (+ (expt x0 2) (- (* 2 x0 xc)) (expt xc 2)) a^2)
+		    (/ (+ (expt y0 2) (- (* 2 y0 yc)) (expt yc 2)) b^2))))
+	 (C1 (+ (/ (+ (- (* 2 (expt x0 2))) (* 2 x0 x1) (* 2 x0 xc) (- (* 2 x1 xc))) a^2)
+		(/ (+ (- (* 2 (expt y0 2))) (* 2 y0 y1) (* 2 y0 yc) (- (* 2 y1 yc))) b^2)))
+	 (C2 (+ (/ (+ (expt x0 2) (- (* 2 x0 x1)) (expt x1 2)) a^2)
+		(/ (+ (expt y0 2) (- (* 2 y0 y1)) (expt y1 2)) b^2))))
+    ;; could use quadratic formula here.
+    ;; returns intersection in parameter space of line
+    (roots-by-projected-polyhedron (vector C0 C1 C2) 0 1)))
+
+(defun intersection-2d-line/ellipse (line ellipse)
+  (when (eq (send line plane) (send ellipse plane))
+    (let ((roots (intersection-2d-line/ellipse-1 line ellipse)))
+      (apply #'values (mapcar #'(lambda (root) (evaluate1 line root)) roots)))))
+
+(defmethod intersection2 ((line 2d-line) (ellipse ellipse))
+  (intersection-2d-line/ellipse line ellipse))
+
+(defmethod intersection2 ((ellipse ellipse) (line 2d-line))
+  (intersection-2d-line/ellipse line ellipse))
+
+(defun intersection-planar-cubic-bezier/ellipse-1 (bezier ellipse)
+  (let* ((cpoints (send bezier control-points))
+	 (p0 (aref cpoints 0))
+	 (p1 (aref cpoints 1))
+	 (p2 (aref cpoints 2))
+	 (p3 (aref cpoints 3))
+	 (p0x (vx p0))
+	 (p0y (vy p0))
+	 (p1x (vx p1))
+	 (p1y (vy p1))
+	 (p2x (vx p2))
+	 (p2y (vy p2))
+	 (p3x (vx p3))
+	 (p3y (vy p3))
+	 (a (send ellipse semi-major-axis))
+	 (b (send ellipse semi-minor-axis))
+	 (center (send ellipse center))
+	 (xc (vx center))
+	 (yc (vy center))
+	 (a^2 (expt a 2))
+	 (b^2 (expt b 2))
+	
+	 (C6 (+ (/ (+ (expt p0x 2) (* -6 p0x p1x) (* 9 (expt p1x 2)) (* 6 p0x p2x) (* -18 p1x p2x) (* 9 (expt p2x 2)) (* -2 p0x p3x) (* 6 p1x p3x) (* -6 p2x p3x) (expt p3x 2)) a^2)
+		(/ (+ (expt p0y 2) (* -6 p0y p1y) (* 9 (expt p1y 2)) (* 6 p0y p2y) (* -18 p1y p2y) (* 9 (expt p2y 2)) (* -2 p0y p3y) (* 6 p1y p3y) (* -6 p2y p3y) (expt p3y 2)) b^2)))
+	
+	 (C5 (+ (/ (+ (* -6 (expt p0x 2)) (* 30 p0x p1x) (* -36 (expt p1x 2)) (* -24 p0x p2x) (* 54 p1x p2x) (* -18 (expt p2x 2)) (* 6 p0x p3x) (* -12 p1x p3x) (* 6 p2x p3x)) a^2)
+		(/ (+ (* -6 (expt p0y 2)) (* 30 p0y p1y) (* -36 (expt p1y 2)) (* -24 p0y p2y) (* 54 p1y p2y) (* -18 (expt p2y 2)) (* 6 p0y p3y) (* -12 p1y p3y) (* 6 p2y p3y)) b^2)))
+
+	 (C4 (+ (/ (+ (* 15 (expt p0x 2)) (* -60 p0x p1x) (* 54 (expt p1x 2)) (* 36 p0x p2x) (* -54 p1x p2x) (* 9 (expt p2x 2)) (* -6 p0x p3x) (* 6 p1x p3x)) a^2)
+		(/ (+ (* 15 (expt p0y 2)) (* -60 p0y p1y) (* 54 (expt p1y 2)) (* 36 p0y p2y) (* -54 p1y p2y) (* 9 (expt p2y 2)) (* -6 p0y p3y) (* 6 p1y p3y)) b^2)))
+
+	 (C3 (+ (/ (+ (* -20 (expt p0x 2)) (* 60 p0x p1x) (* -36 (expt p1x 2)) (* -24 p0x p2x) (* 18 p1x p2x) (* 2 p0x p3x) (* -2 p0x xc) (* 6 p1x xc) (* -6 p2x xc) (* 2 p3x xc)) a^2)
+		(/ (+ (* -20 (expt p0y 2)) (* 60 p0y p1y) (* -36 (expt p1y 2)) (* -24 p0y p2y) (* 18 p1y p2y) (* 2 p0y p3y) (* -2 p0y yc) (* 6 p1y yc) (* -6 p2y yc) (* 2 p3y yc)) b^2)))
+
+	 (C2 (+ (/ (+ (* 15 (expt p0x 2)) (* -30 p0x p1x) (* 9 (expt p1x 2)) (* 6 p0x p2x) (* 6 p0x xc) (* -12 p1x xc) (* 6 p2x xc)) a^2)
+		(/ (+ (* 15 (expt p0y 2)) (* -30 p0y p1y) (* 9 (expt p1y 2)) (* 6 p0y p2y) (* 6 p0y yc) (* -12 p1y yc) (* 6 p2y yc)) b^2)))
+
+	 (C1 (+ (/ (+ (* -6 (expt p0x 2)) (* 6 p0x p1x) (* -6 p0x xc) (* 6 p1x xc)) a^2)
+		(/ (+ (* -6 (expt p0y 2)) (* 6 p0y p1y) (* -6 p0y yc) (* 6 p1y yc)) b^2)))
+
+	 (C0 (1- (+ (/ (+ (expt p0x 2) (* 2 p0x xc) (expt xc 2)) a^2)
+		    (/ (+ (expt p0y 2) (* 2 p0y yc) (expt yc 2)) b^2)))))
+    
+    (roots-by-projected-polyhedron (vector C0 C1 C2 C3 C4 C5 C6) 0 1)))
+
+(defun implicit-equation-of-a-planar-line (point-1 point-2)
+  "return a, b and c in normalized implicit equation of line as ax + by + c = 0, with a^2 + b^2 = 1"
+  (let* ((delta-y (- (vy point-2) (vy point-1)))
+	 (delta-x (- (vx point-2) (vx point-1)))
+	 (m (/ delta-y delta-x))
+	 (abs-a (/ (abs m) (sqrt (1+ (expt m 2)))))
+	 (a (* (signum delta-y)  abs-a))
+	 (abs-b (sqrt (- 1.0d0 (expt a 2))))
+	 (b (- (* (signum delta-x) abs-b)))
+	 (c (- (+ (* a (vx point-1)) (* b (vy point-1))))))
+    (vector a b c)))
 
 
-  
+(defun implicit-equation-of-a-planar-line-1 (point-1 point-2)
+  "return a, b and c in normalized implicit equation of line as ax + by + c = 0, with a^2 + b^2 = 1"
+  (let* ((h-point-1 (vec3 (vx point-1) (vy point-1) 1))
+	 (h-point-2 (vec3 (vx point-2) (vy point-2) 1))
+	 (line-eq (vc h-point-1 h-point-2))
+	 (W (vz line-eq))
+	 (a&b (vunit (vec2 (/ (vx line-eq) W) (/ (vy line-eq) W)))))
+    (vector (vx a&b) (vy a&b) (- (v. a&b point-1)))))
+
 
 (defclass arc (2d-mixin conic-section-mixin entity-mixin)
   ((degenerate? :slot-class :virtual
