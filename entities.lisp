@@ -1830,12 +1830,17 @@
 	   (intrv (a b c d)
 	     (let ((min)
 		   (max))
+	       ;; divide by zero,
+	       ;; this is a problem
 	       (when (zerop c)
-		 (setq min (/ b d))
-		 (setq max (cauchy-bound f)))
+		 
+		 (setq min (/ (+ a b) d))
+		 (setq max most-positive-fixnum))
 	       (when (zerop d)
-		 (setq min (/ a c))
-		 (setq max (cauchy-bound f)))
+		 (setq min (/ (+ a b) c))
+		 (setq max -11))
+
+	       
 
 	       (if min
 		   (list min max)
@@ -1875,8 +1880,6 @@
 	   
 	   (multiple-value-setq (a b c d p s) (values-list (pop interval-stack)))
 
-	   (print p)
-
 	 step-3
 	   (setq alpha (/ (cauchy-bound p)))
 
@@ -1897,12 +1900,9 @@
 	     (setq b (+ (* alpha a) b))
 	     (setq d (+ (* alpha c) d)))
 
-	   (print p)
-       
 	   (when (zerop (evaluate-polynomial p 0))
 	     (let ((root (/ b d)))
-	       (setq root-list (nconc root-list (list (list root root))))
-	       (break)
+	       (push (list root root) root-list)
 	       (setq p (subseq p 1))))
 
 	   (setq s (descartes-rule-of-signs p))
@@ -1911,13 +1911,13 @@
 	     (go step-2))
 	   
 	   (when (= 1 s)
-	     (setq root-list (nconc root-list (list (intrv a b c d))))
+	     (push (intrv a b c d) root-list)
 	     (go step-2))
 
 	 step-6
 
 	   (setq p1 (transform-polynomial p 1 2))
-	   (print p1)
+
 	   (setq a1 a)
 	   (setq b1 (+ a b))
 	   (setq c1 c) ;; typo in paper?
@@ -1926,13 +1926,18 @@
 
 	   (when (zerop (evaluate-polynomial p1 0))
 	     (let ((root (/ b1 d1)))
-	       (setq root-list (nconc root-list (list (list root root))))
+	       (push (list root root) root-list)
 	       (setq p1 (subseq p1 1))
 	       (setq r 1)))
 
+	   (print p1)
 	   (setq s1 (descartes-rule-of-signs p1))
+	   (print 's1)
+	   (print s1)
 
-	   (setq s2 (- s s1 r))
+	   (setq s2 (- s1 r))  ;; (- s s1 r) ;;typo?
+	   (print 'r)
+	   (print r)
 
 	   (setq a2 b)
 	   (setq b2 (+ a b))
@@ -1940,12 +1945,10 @@
 	   (setq d2 (+ c d))
 
 	 step-7
-
-	   ;;(setq p2 p1)
-
+	   (print 's2)
 	   (print s2)
-	   
-	   (when (> s2 1)
+
+	   (when (> s2 1) ;; (> s2 1)
 	     (setq p2 (transform-polynomial (reverse p) 1 2))
 	     
 	     (when (zerop (evaluate-polynomial p2 0))
@@ -1953,9 +1956,6 @@
 	     
 	     (setq s2 (descartes-rule-of-signs p2))
 	   
-	     (print s1)
-	     (print s2)
-	     
 	     ;;step-8
 	     (when (< s1 s2)
 	       (let ((a-temp a1)
@@ -1983,7 +1983,8 @@
 	       (go step-2))
 	   
 	     (if (= 1 s1)
-		 (setq root-list (nconc root-list (list (intrv a1 b1 c1 d1))))
+		 (progn 
+		 (push (intrv a1 b1 c1 d1) root-list))
 		 (push (list a1 b1 c1 d1 p1 s1) interval-stack))
 	     
 	     ;;step-10
@@ -1992,7 +1993,8 @@
 	       (go step-2))
 
 	     (if (= 1 s2)
-		 (setq root-list (nconc root-list (list (intrv a2 b2 c2 d2))))
+		 (progn 
+		 (push (intrv a2 b2 c2 d2) root-list))
 		 (push (list a2 b2 c2 d2 p2 s2) interval-stack))
 
 	     (go step-2))
@@ -2001,7 +2003,9 @@
 	     (go step-2))
 	   
 	   (if (= 1 s1)
-	       (setq root-list (nconc root-list (list (intrv a1 b1 c1 d1))))
+	       (progn 	     
+
+	       (push (intrv a1 b1 c1 d1) root-list))
 	       (push (list a1 b1 c1 d1 p1 s1) interval-stack))
 
 	   (go step-2)
@@ -2009,7 +2013,7 @@
 	 exit)
 	
 	(mapcar #'(lambda (entry)
-		    (list (/ (car entry) gcd) (/ (cadr entry) gcd))) root-list)))))
+		    (list (/ (car entry) gcd) (/ (cadr entry) gcd))) (nreverse root-list))))))
 
        
 	 
@@ -2130,14 +2134,12 @@
     n))
        
 
-(defun roots (polynomial a b &optional (epsilon 1.0d-20))
-  (let* ((transformed (transform-polynomial polynomial a b))
-	 (intervals (isolate-roots-vas-cf transformed)))
-    (sort (mapcar #'(lambda (s) (+ a (* s (- b a))))
-		  (apply #'append
-			 (mapcar #'(lambda (interval)
-				     (converge-on-root2 transformed (car interval) (cadr interval) epsilon))
-				 intervals)))
+(defun roots (polynomial &optional (epsilon 1.0d-20))
+  (let* ((intervals (isolate-roots-vas-cf polynomial)))
+    (sort (apply #'append
+		 (mapcar #'(lambda (interval)
+			     (converge-on-root2 polynomial (car interval) (cadr interval) epsilon))
+			 intervals))
 	  #'<)))
     
 
