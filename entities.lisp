@@ -910,7 +910,7 @@
 
 (defclass parametric-surface-mixin (parametric-mixin surface-mixin) ())
 
-(defclass generalized-cylinder-mixin (explicit-surface-mixin) ())
+
 
 (defclass plane (3d-mixin plane-mixin relative-3d-coordinate-system-mixin geometry-mixin entity-mixin)
   ((u-closed? :slot-class :virtual
@@ -999,7 +999,7 @@
 	  most-negative-double-float
 	  most-positive-double-float))
 
-(defmethod evaluate2 ((self plane) (u real) (v real) &key (derivs-u 0) (derivs-v 0))
+(defmethod evaluate2 ((self plane) (u real) (v real) &key (derivs 0))
   (setq u (coerce u 'double-float))
   (setq v (coerce v 'double-float))
   (let* ((x-axis (the x-axis))
@@ -1812,10 +1812,10 @@
 
 (defun isolate-roots-vas-cf (f)
   "procedure to return isolated root intervals based on Vincent's method"
-  ;;Improving the Performance of the Continued Fractions
-  ;;Method Using New Bounds of Positive Roots
-  ;;A. G. Akritas, A. W. Strzebonski, P. S. Vigklas
-  ;;https://www.semanticscholar.org/reader/87211188ec3548cd115e82442daf2513d5c5aa9a p.267-268
+  ;; Improving the Performance of the Continued Fractions
+  ;; Method Using New Bounds of Positive Roots
+  ;; A. G. Akritas, A. W. Strzebonski, P. S. Vigklas
+  ;; https://www.semanticscholar.org/reader/87211188ec3548cd115e82442daf2513d5c5aa9a p.267-268
 
   (let* ((p (map 'vector #'rationalize f))
 	 (denoms (map 'list #'denominator p))
@@ -1920,7 +1920,7 @@
 
 	   (setq a1 a)
 	   (setq b1 (+ a b))
-	   (setq c1 c) ;; typo in paper?
+	   (setq c1 c) 
 	   (setq d1 (+ c d))
 	   (setq r 0)
 
@@ -1948,7 +1948,7 @@
 	   (print 's2)
 	   (print s2)
 
-	   (when (> s2 1) ;; (> s2 1)
+	   (when (> s2 1)
 	     (setq p2 (transform-polynomial (reverse p) 1 2))
 	     
 	     (when (zerop (evaluate-polynomial p2 0))
@@ -2713,7 +2713,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
   (declare (ignore initargs))
   (let ((cpoints (the control-points)))
     (loop for cpoint across cpoints for i from 0
-	  do (cond ((typep cpoint 'vec2) (setf (aref cpoints i) (3dm.d::%vec3 (vx cpoint) (vy cpoint) 1.0d0)))
+	  do (cond ((typep cpoint 'vec2)(setf (aref cpoints i) (3dm.d::%vec3 (vx cpoint) (vy cpoint) 1.0d0)))
 		   ((typep cpoint 'vec3) t)
 		   (t (error "invalid control point type for plane curve: ~S ~S" (type-of cpoint) cpoint))))
     (values)))
@@ -2800,21 +2800,24 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 	    finally (return C)))))
 
 
-(defclass b-spline-mixin () ())
+(defclass b-spline-mixin ()
+  ((homogeneous-control-points :type simple-array
+			       :initarg :%homogeneous-control-points)))
 
 (defclass b-spline-curve-mixin (b-spline-mixin parametric-curve-mixin)
-  ((degree :type fixnum
-	   :initarg :degree
-	   :initarg degree)
+  ((degree :slot-class :virtual
+	   :type fixnum
+	   :getter (;; m = n + p + 1
+		    (let* ((m (1- (length (the knot-vector))))
+			   (cpoints (the homogeneous-control-points))
+			   (n (1- (length cpoints))))
+		      (- m n 1)))
+	   :setter ((setter-error 'degree-u self)))
    
    (knot-vector :type simple-array
 		:initarg :knot-vector
 		:initarg knot-vector)
    
-   (control-points :type simple-array
-		   :initarg :control-points
-		   :initarg control-points)
-
    (order :slot-class :virtual
 	  :type fixnum
 	  :getter ((1+ (the degree)))
@@ -2822,7 +2825,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 
    (bezier? :slot-class :virtual
 	    :type boolean
-	    :getter ((and (= (the degree) (1- (length (the control-points))))
+	    :getter ((and (= (the degree) (1- (length (the homogeneous-control-points))))
 			  (let* ((knot-vector (the knot-vector))
 				 (m+1 (length knot-vector)))
 			    (and (loop for i from 0 below (/ m+1 2)
@@ -2839,7 +2842,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 
    (degenerate? :slot-class :virtual
 		:type boolean
-		:getter ((let ((cpoints (the control-points)))
+		:getter ((let ((cpoints (the homogeneous-control-points)))
 			   (loop for i from 0 to (- (length cpoints) 2)
 				 always (v= (elt cpoints i) (elt cpoints (1+ i))))))
 		:setter ((setter-error 'degenerate? self)))
@@ -2870,79 +2873,195 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 						collect (elt kv (- m i))))))))
 	     :setter ())))
 
-(defmethod initialize-instance ((self b-spline-curve-mixin) &rest initargs)
-  (let ((cpoints (or (getf initargs :control-points)
-		     (getf initargs 'control-points)))
-	(knot-vector (or (getf initargs :knot-vector)
-			 (getf initargs 'knot-vector))))
-    
-    (assert cpoints)
-    (assert knot-vector)
-    
-    (when (listp cpoints)
-      (setq cpoints (coerce cpoints 'vector)))
-
-    (when (listp knot-vector)
-      (setq knot-vector (coerce knot-vector 'vector)))
-
-    (let* ((m (1- (length knot-vector)))
-	   (n+1 (length cpoints))
-	   (p (- m n+1)))
-      
-      ;; (3.2) pg. 82 _The Nurbs Book_, 2nd Edition
-      ;; m+1 is number of knots
-      ;; n+1 is number of control points
-      ;; p is degree
-      ;; m = n + p + 1
-      ;; so p = m - (n + 1)
-      
-      (call-next-method self
-			:control-points cpoints
-			:knot-vector knot-vector
-			:degree p))))
-			
-			
-
 (defgeneric insert-knot (b-spline-curve knot i))
 
 (defclass b-spline-plane-curve (plane-curve-mixin b-spline-curve-mixin entity-mixin)
   ((rational? :slot-class :virtual
 	      :type boolean
-	      :getter ((let ((cpoints (the control-points)))
+	      :getter ((let ((hcpoints (the homogeneous-control-points)))
 			 (not
-			  (loop for cpoint across cpoints
+			  (loop for cpoint across hcpoints
 				always (= (vz cpoint) 1.0d0)))))
 	      :setter ((setter-error 'rational? self)))))
+
+(defmethod initialize-instance ((self b-spline-plane-curve) &rest initargs &key %homogeneous-control-points control-points weights knot-vector)
+  (if %homogeneous-control-points
+      (call-next-method)
+      (let* ((cpoints (or control-points
+			  (getf initargs 'control-points)))
+	     (weights (or weights
+			  (getf initargs 'weights)
+			  (make-array (length cpoints) :initial-element 1.0d0)))
+	     (knot-vector (or knot-vector
+			      (getf initargs 'knot-vector))))
+    
+	(assert cpoints)
+	(assert knot-vector)
+    
+	(when (listp knot-vector)
+	  (setq knot-vector (coerce knot-vector 'vector)))
+
+	(let* ((m (1- (length knot-vector)))
+	       (n+1 (length cpoints))
+	       (p (- m n+1)))
+      
+	  ;; (3.2) pg. 82 _The Nurbs Book_, 2nd Edition
+	  ;; m+1 is number of knots
+	  ;; n+1 is number of control points
+	  ;; p is degree
+	  ;; m = n + p + 1
+	  ;; so p = m - (n + 1)
+
+	  (remf initargs :knot-vector)
+      
+	  (apply #'call-next-method self
+		 :%homogeneous-control-points
+		 (map 'vector #'(lambda (cp w)
+				  (vec3 (* w (vx cp)) (* w (vy cp)) w))
+		      cpoints
+		      weights)
+		 :knot-vector knot-vector
+		 :degree p
+		 initargs)))))
+
+
+
+(defmethod evaluate1 ((self b-spline-plane-curve) (parameter real) &key (derivs 0))
+  (let* ((knot-vector (the knot-vector))
+	 (cpoints (the homogeneous-control-points))
+	 (n (1- (length cpoints)))
+	 (p (the degree))
+	 (span (find-span n p parameter knot-vector))
+	 (basis-funs (basis-funs span parameter p knot-vector)))
+    (let ((Cw (vec3 0 0 0)))
+      (loop for i from 0 to p
+	    do (setq Cw (v+ Cw (v* (aref basis-funs i)
+				   (aref cpoints (+ (- span p) i)))))
+	    finally (return (vec2 (/ (vx Cw) (print (vz Cw))) (/ (vy Cw) (vz Cw))))))))
+
+
+      
+
+
+
+
+
+(defun make-nurbs-line (a b)
+  (make-instance 'b-spline-space-curve
+		 :control-points
+		 (list a b)
+		 :knot-vector (list 0 0 1 1)))
+
+(defun swept-surface (trajectory-curve section-curve)
+  (make-instance 'b-spline-surface
+		 :%homogeneous-control-points
+		 (let ((TR (send trajectory-curve homogeneous-control-points))
+		       (Q (send section-curve homogeneous-control-points)))
+		   (make-array
+		    (list (length Q) (length TR))
+		    :initial-contents
+		    (loop for i from 0 below (length Q)
+			  collect (loop for j from 0 below (length TR)
+					collect (let ((wij (* (vw (elt TR j)) (vw (elt Q i)))))
+						  (vec4 (* wij (+ (/ (vx (elt TR j)) (vw (elt TR j))) (/ (vx (elt Q i)) (vw (elt Q i)))))
+							(* wij (+ (/ (vy (elt TR j)) (vw (elt TR j))) (/ (vy (elt Q i)) (vw (elt Q i)))))
+							(* wij (+ (/ (vz (elt TR j)) (vw (elt TR j))) (/ (vz (elt Q i)) (vw (elt Q i)))))
+							wij))))))
+		 :knot-vector-u (send section-curve knot-vector)
+		 :knot-vector-v (send trajectory-curve knot-vector)))
+
+
+
+
+
+						
+
+
+  
 
 (defclass b-spline-space-curve (space-curve-mixin b-spline-curve-mixin entity-mixin)
   ((rational? :slot-class :virtual
 	      :type boolean
-	      :getter ((let ((cpoints (the control-points)))
+	      :getter ((let ((cpoints (the homogeneous-control-points)))
 			 (not
 			  (loop for cpoint across cpoints
 				always (= (vw cpoint) 1.0d0)))))
 	      :setter ((setter-error 'rational? self)))))
 
-(defclass b-spline-surface-mixin (b-spline-mixin parametric-surface-mixin)
+(defmethod initialize-instance ((self b-spline-space-curve) &rest initargs &key %homogeneous-control-points control-points weights knot-vector)
+  (if %homogeneous-control-points
+      (call-next-method)
+      (let* ((cpoints (or control-points
+			  (getf initargs 'control-points)))
+	     (weights (or weights
+			  (getf initargs 'weights)
+			  (make-array (length cpoints) :initial-element 1.0d0)))
+	     (knot-vector (or knot-vector
+			      (getf initargs 'knot-vector))))
+    
+	(assert cpoints)
+	(assert knot-vector)
+    
+	(when (listp knot-vector)
+	  (setq knot-vector (coerce knot-vector 'vector)))
+
+	(remf initargs :knot-vector)
+
+	(apply #'call-next-method self
+			  :%homogeneous-control-points
+			  (map 'vector #'(lambda (cp w)
+					   (vec4 (* w (vx cp)) (* w (vy cp)) (* w (vz cp)) w))
+			       cpoints
+			       weights)
+			  :knot-vector knot-vector
+			  initargs))))
+
+
+
+
+(defmethod evaluate1 ((self b-spline-space-curve) (parameter real) &key (derivs 0))
+  (let* ((knot-vector (the knot-vector))
+	 (cpoints (the homogeneous-control-points))
+	 (n (1- (length cpoints)))
+	 (p (the degree))
+	 (span (find-span n p parameter knot-vector))
+	 (basis-funs (basis-funs span parameter p knot-vector)))
+    (let ((Cw (vec4 0 0 0 0)))
+      (loop for i from 0 to p
+	    do (setq Cw (v+ Cw (v* (aref basis-funs i)
+				   (aref cpoints (+ (- span p) i)))))
+	    finally (return (safe-euclid Cw))))))
+
+
+
+(defclass b-spline-surface-mixin (b-spline-mixin parametric-surface-mixin geometry-mixin)
   ((order-u :slot-class :virtual
 	    :type fixnum
-	    :getter ((first (array-dimensions (the control-points))))
+	    :getter ((1+ (the degree-u)))
 	    :setter ((setter-error 'order-u self)))
 	     
    (order-v :slot-class :virtual
 	    :type fixnum
-	    :getter ((second (array-dimensions (the control-points))))
+	    :getter ((1+ (the degree-v)))
 	    :setter ((setter-error 'order-v self)))
 
    (degree-u :slot-class :virtual
 	     :type fixnum
-	     :getter ((1- (the order-u)))
+	     :getter (;; m = n + p + 1
+		      (let* ((m (1- (length (the knot-vector-u))))
+			     (cpoints (the homogeneous-control-points))
+			     (n (1- (first (array-dimensions cpoints)))))
+			(- m n 1)))
 	     :setter ((setter-error 'degree-u self)))
-	     
+
    (degree-v :slot-class :virtual
 	     :type fixnum
-	     :getter ((1- (the order-u)))
-	     :setter ((setter-error 'degree-v self)))
+	     :getter (;; m = n + p + 1
+		      (let* ((m (1- (length (the knot-vector-v))))
+			     (cpoints (the homogeneous-control-points))
+			     (n (1- (second (array-dimensions cpoints)))))
+			(- m n 1)))
+	     :setter ((setter-error 'degree-u self)))
    
    (knot-vector-u :type sequence
 		  :initarg :knot-vector-u
@@ -2952,10 +3071,6 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 		  :initarg :knot-vector-v
 		  :initarg knot-vector-v)
 
-   (control-points :type array
-		   :initarg :control-points
-		   :initarg control-points)
-   
    (u-closed? :slot-class :virtual
 	      :type boolean
 	      :getter (nil)
@@ -3006,7 +3121,66 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 		               (apply #'= (let ((m (1- (length kv))))
 			                    (loop for i from 0 below order
 						  collect (elt kv (- m i))))))))
-	       :setter ())))
+	       :setter ())
+   
+   (rational? :slot-class :virtual
+	      :type boolean
+	      :getter ((let* ((hcps (the homogeneous-control-points))
+			      (dims (array-dimensions hcps)))
+			 (not (loop for i from 0 below (first dims)
+				    always (loop for j from 0 below (second dims)
+						 always (= (vw (aref hcps i j)) 1.0d0))))))
+	      :setter ((setter-error 'rational? self)))))
+
+(defmethod initialize-instance ((self b-spline-surface-mixin) &rest initargs &key %homogeneous-control-points control-points weights knot-vector-u knot-vector-v)
+  (if %homogeneous-control-points
+      (call-next-method)
+      (let ((cpoints (or control-points (getf initargs 'control-points))))
+	(multiple-value-bind (n m)
+	    (if (arrayp cpoints)
+		(values-list (array-dimensions cpoints))
+		(values (length cpoints) (length (elt cpoints 0))))
+	  (let ((weights (or weights (getf initargs 'weights) (make-array (list n m) :initial-element 1.0d0)))
+		(knot-vector-u (or knot-vector-u (getf initargs 'knot-vector-u)))
+		(knot-vector-v (or knot-vector-v (getf initargs 'knot-vector-v))))
+    
+	    (assert cpoints)
+	    (assert knot-vector-u)
+	    (assert knot-vector-v)
+	
+	    (when (listp knot-vector-u)
+	      (setq knot-vector-u (coerce knot-vector-u 'vector)))
+	    (when (listp knot-vector-v)
+	      (setq knot-vector-u (coerce knot-vector-v 'vector)))
+
+	    (remf initargs :knot-vector-u)
+	    (remf initargs :knot-vector-v)
+	    (remf initargs :control-points)
+	    (remf initargs :weights)
+	
+	    (apply #'call-next-method self
+			      :%homogeneous-control-points
+			      (flet ((element (aggregate i j)
+				       (if (arrayp aggregate)
+					   (aref aggregate i j)
+					   (elt (elt aggregate i) j))))
+			    
+				(let ((array (make-array (list n m) :element-type 'vec4 :initial-element (vec4 0 0 0 0))))
+				  (loop for i from 0 below n
+					do (loop for j from 0 below m
+						 do (let ((cpt (element cpoints i j))
+							  (w (element weights i j)))
+						      (setf (aref array i j) (vec4 (* w (vx cpt))
+										   (* w (vy cpt))
+										   (* w (vz cpt))
+										   w)))))
+				  array))
+			      :knot-vector-u knot-vector-u
+			      :knot-vector-v knot-vector-v
+			      initargs))))))
+
+
+
 
 (defun find-span (n p u knot-vector)
   ;; Algorithm A2.1 pg. 68 _The Nurbs Book_ 2nd edition
@@ -3014,20 +3188,20 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
     (return-from find-span n))
   (let* ((low p)
 	 (high (1+ n))
-	 (mid (/ (+ low high) 2)))
+	 (mid (floor (+ low high) 2)))
     (loop while (or (< u (aref knot-vector mid))
 		    (>= u (aref knot-vector (1+ mid))))
 	  do (if (< u (aref knot-vector mid))
 		 (setq high mid)
 		 (setq low mid))
-	     (setq mid (/ (+ low high) 2))
+	     (setq mid (floor (+ low high) 2))
 	  finally (return mid))))
 
 (defun basis-funs (i u p knot-vector)
   ;; Algorithm A2.2 pg. 70 _The Nurbs Book_ 2nd edition
-  (let ((N (make-array (1+ p) :element-type 'double-float :initial-element 1.0d0))
-	(left (make-array (1+ p) :element-type 'double-float))
-	(right (make-array (1+ p) :element-type 'double-float))
+  (let ((N (make-array (1+ p) :initial-element 1.0d0))
+	(left (make-array (1+ p)))
+	(right (make-array (1+ p)))
 	(saved 0.0d0)
 	(temp 0.0d0))
     
@@ -3044,45 +3218,319 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 	     (setf (aref N j) saved)
 	  finally (return N))))
 
-(defmethod evaluate2 ((self b-spline-surface-mixin) (u real) (v real) &key (derivs-u 0) (derivs-v 0))
-  (let* ((knot-vector-u (the knot-vector-u))
-	 (knot-vector-v (the knot-vector-v))
-	 (Pw (the control-points))
-	 (dims (array-dimensions Pw))
-	 (n (1- (first dims)))
-	 (m (1- (second dims)))
-	 (p (the degree-u))
-	 (q (the degree-v))
+(defun ders-basis-funs (i u p n knot-vector)
+  ;; Algorithm A2.3, The Nurbs Book, 2nd edition, p. 72
+  "Compute nonzero basis functions and their derivatives."
+  (setq u (coerce u 'double-float))
+  (let* ((1+p (1+ p))
+	 (ders (make-array (list 1+p 1+p) :initial-element 0.0d0))
+	 (ndu  (make-array (list 1+p 1+p) :initial-element 1.0d0))
+	 (left  (make-array 1+p))
+	 (right (make-array 1+p))
+	 (saved 0.0d0)
+	 (temp 0.0d0))
+    (loop for j from 1 to p
+	  do (setf (aref left j) (- u (aref knot-vector (1+ (- i j))))
+		   (aref right j) (- (aref knot-vector (+ i j)) u))
+	     (setq saved 0.0d0)
+	     (loop for r from 0 below j
+		   do ;; lower triangle:
+		      (setf (aref ndu j r) (+ (aref right (1+ r)) (aref left (- j r))))
+		      (setq temp (/ (aref ndu r (1- j)) (aref ndu j r)))
+		      ;; upper triangle:
+		      (setf (aref ndu r j) (+ saved (* (aref right (1+ r)) temp)))
+		      (setq saved (* (aref left (- j r)) temp)) )
+	     (setf (aref ndu j j) saved))
+    ;; load the basis functions:
+    (loop for j from 0 to p
+	  do (setf (aref ders 0 j) (aref ndu j p)))
+    ;; This section computes the derivatives
+    (let ((a (make-array (list 2 (1+ n)) :initial-element 1.0d0)))
+      (loop for r from 0 to p ;; loop over function index
+	    do (let ((s1 0) (s2 1))
+		 ;;(setf (aref a 0 0) 1.0d0)
+		 ;; loop to compute kth derivative
+		 (loop for k from 1 to n
+		       do (let ((d 0.0d0)
+				(rk (- r k))
+				(pk (- p k))
+				(j1)
+				(j2)
+				(j))
+			    (when (>= r k)
+			      (setf (aref a s2 0) (/ (aref a s1 0) (aref ndu (+ pk 1) rk)))
+			      (setq d (* (aref a s2 0) (aref ndu rk pk))))
+			    (if (>= rk -1)
+				(setq j1 1)
+				(setq j1 (- rk)))
+			    (if (<= (1- r) pk)
+				(setq j2 (1- k))
+				(setq j2 (- p r)))
+			    (loop for j from j1 to j2
+				  do (setf (aref a s2 j) (/ (- (aref a s1 j) (aref a s1 (1- j))) (aref ndu (1+ pk) (+ rk j))))
+				     (incf d (* (aref a s2 j) (aref ndu (+ rk j) pk))))
+			    (when (<= r pk)
+			      (setf (aref a s2 k) (/ (- (aref a s1 (1- k))) (aref ndu (1+ pk) r)))
+			      (incf d (* (aref a s2 k) (aref ndu r pk))))
+			    (setf (aref ders k r) d)
+			    (setq j s1
+				  s1 s2
+				  s2 j) ;; switch rows
+			    )))))
+    ;; multiply through by the correct factors
+    (let ((r p))
+      (loop for k from 1 to n
+	    do (loop for j from 0 to p
+		     do (setf (aref ders k j) (* (aref ders k j) r)))
+	       (setq r (* r (- p k)))))
+    ders))
+
+(defun testders (surface u v)
+  (let* ((cpoints (send surface homogeneous-control-points))
+	 (n (1- (first (array-dimensions cpoints))))
+	 (m (1- (second (array-dimensions cpoints))))
+	 (kv-u (send surface knot-vector-u))
+	 (kv-v (send surface knot-vector-v)))
+    (surface-derivs-alg1 n (send surface degree-u) kv-u
+			 m (send surface degree-v) kv-v
+			 cpoints
+			 u v 10)))
+			 
+
+(defun surface-derivs-alg1 (n p knot-vector-u m q knot-vector-v control-points u v d)
+  ;; Algorithm A3.6, The Nurbs Book, 2nd edition, p. 111
+  (setq u (coerce u 'double-float))
+  (setq v (coerce v 'double-float))
+  (let* ((du (min d p))
+	 (dv (min d q))
 	 (uspan (find-span n p u knot-vector-u))
-	 (uspan-p (- uspan p))
-	 (Nu (basis-funs uspan u p knot-vector-u))
 	 (vspan (find-span m q v knot-vector-v))
-	 (vspan-q (- vspan q))
-	 (Nv (basis-funs vspan v q knot-vector-v))
-	 (temp (make-array (1+ q)
-			   :element-type 'vec4
-			   :initial-element (load-time-value (vec4 0 0 0 0))))
-	 (Sw (load-time-value (vec4 0 0 0 0))))
-    (loop for l from 0 to q
-	  do (loop for k from 0 to p
-		   do (setf (aref temp l)
-			    (3dm::binary-v+
-			     (cl:the vec4 (aref temp l))
-			     (3dm::binary-v*
-			      (cl:the double-float (aref Nu k))
-			      (cl:the vec4 (aref Pw (+ uspan-p k) (+ vspan-q l)))))))
-	  finally (loop for l from 0 to q
-			do (setq Sw (3dm::binary-v+
-				     (cl:the vec4 Sw)
-				     (3dm::binary-v* (cl:the double-float (aref Nv l))
-						     (cl:the vec4 (aref temp l))))))
-		  (return (safe-euclid Sw)))))
+	 (Nu (ders-basis-funs uspan u p du knot-vector-u))
+	 (Nv (ders-basis-funs vspan v q dv knot-vector-v))
+	 (SKL (make-array (list (1+ d) (1+ d)) :initial-element (vec4 0 0 0 0)))
+	 (temp (make-array (1+ q) :initial-element (vec4 0 0 0 0))))
+    (loop for k from 0 to du
+	  do (loop for s from 0 to q
+		   do (setf (aref temp s) (vec4 0 0 0 0))
+		      (loop for r from 0 to p
+			    do (setf (aref temp s) (v+ (aref temp s)
+						       (v* (aref Nu k r) (aref control-points (+ (- uspan p) r) (+ (- vspan q) s)))))))
+	     (loop for l from 0 to (min (- d k) dv)
+		   do (setf (aref SKL k l) (vec4 0 0 0 0))
+		      (loop for s from 0 to q
+			    do (setf (aref SKL k l) (v+ (aref SKL k l) (v* (aref Nv l s) (aref temp s)))))))
+    SKL))
+
+(defun rat-surface-derivs (surface u v d)
+  (let* ((cpoints (send surface homogeneous-control-points))
+	 (n (1- (first (array-dimensions cpoints))))
+	 (m (1- (second (array-dimensions cpoints))))
+	 (kv-u (send surface knot-vector-u))
+	 (kv-v (send surface knot-vector-v))
+	 (d-u (send surface degree-u))
+	 (d-v (send surface degree-v))
+	 (ders (surface-derivs-alg1 n d-u kv-u
+				    m d-v kv-v
+				    cpoints
+				    u v d))
+	 (SKL (make-array (list (1+ d) (1+ d))
+			  :initial-element nil)))
+    ;; Algorithm A4.4, The Nurbs Book, 2nd edition, p. 137-138 
+    (loop for k from 0 to d
+	  do (loop for l from 0 to (- d k)
+		   do (let ((v0 (vec3 (vx (aref ders k l)) (vy (aref ders k l)) (vz (aref ders k l)))))
+			(loop for j from 1 to l
+			      do (setf v0 (v- v0 (v* (* (binomial-coefficient l j) (vw (aref ders 0 j))) (aref SKL k (- l j))))))
+			(loop for i from 1 to k
+			      do (setf v0 (v- v0 (v* (* (binomial-coefficient k i) (vw (aref ders i 0))) (aref SKL (- k i) l))))
+				 (let ((v2 (vec3 0 0 0)))
+				   (loop for j from 1 to l
+					 do (setf v2 (v+ v2 (v* (* (binomial-coefficient l j) (vw (aref ders i j))) (aref SKL (- k i) (- l j))))))
+				   (setf v0 (v- v0 (v* (binomial-coefficient k i) v2)))))
+			(setf (aref SKL k l) (v/ v0 (vw (aref ders 0 0)))))))
+    SKL))
+		 
+(defmethod evaluate2 ((self b-spline-surface-mixin) (u real) (v real) &key (derivs 0))
+
+  (if (> derivs 0)
+      
+      (let* ((d (min derivs (max (the degree-u) (the degree-v))))
+	     (results (rat-surface-derivs self u v d)))
+	
+	(values-list (append (list (aref results 0 0))
+			     (loop for i from 1 to d
+				   collect
+				   (append (loop for j from 0 to i
+						 collect (aref results j i))
+					   (loop for j from (1- i) downto 0
+						 collect (aref results i j)))))))
+      
+      (let* ((knot-vector-u (the knot-vector-u))
+	     (knot-vector-v (the knot-vector-v))
+	     (Pw (the homogeneous-control-points))
+	     (dims (array-dimensions Pw))
+	     (n (1- (first dims)))
+	     (m (1- (second dims)))
+	     (p (the degree-u))
+	     (q (the degree-v))
+	     (uspan (find-span n p u knot-vector-u))
+	     (uspan-p (- uspan p))
+	     (Nu (basis-funs uspan u p knot-vector-u))
+	     (vspan (find-span m q v knot-vector-v))
+	     (vspan-q (- vspan q))
+	     (Nv (basis-funs vspan v q knot-vector-v))
+	     (temp (make-array (1+ q)
+			       :element-type 'vec4
+			       :initial-element (load-time-value (vec4 0 0 0 0))))
+	     (Sw (load-time-value (vec4 0 0 0 0))))
+	
+	(loop for l from 0 to q
+	      do (loop for k from 0 to p
+		       do (setf (aref temp l)
+				(v+
+				 (cl:the vec4 (aref temp l))
+				 (v*
+				  (aref Nu k)
+				  (cl:the vec4 (aref Pw (+ uspan-p k) (+ vspan-q l)))))))
+	      finally (loop for l from 0 to q
+			    do (setq Sw (v+
+					 (cl:the vec4 Sw)
+					 (v* (aref Nv l)
+					     (cl:the vec4 (aref temp l))))))
+		      (return (safe-euclid Sw))))))
 	  
 
    
   
 (defclass b-spline-surface (3d-mixin b-spline-surface-mixin entity-mixin)
   ())
+
+(defmethod draw ((self b-spline-surface-mixin))
+  (let* ((kv-u (the knot-vector-u))
+	 (kv-v (the knot-vector-v))
+	 (u-min (aref kv-u 0))
+	 (u-max (aref kv-u (1- (length kv-u))))
+	 (v-min (aref kv-v 0))
+	 (v-max (aref kv-v (1- (length kv-v))))
+	 (vertices ())
+	 (indices ())
+	 (resolution 100))
+	
+    (loop for i from 0 to resolution
+	  with u-step = (/ (- u-max u-min) resolution)
+	  with v-step = (/ (- v-max v-min) resolution)
+	  do (let ((u (+ u-min (* i u-step))))
+	       (loop for j from 0 to resolution
+		     do (let ((v (+ v-min (* j v-step))))
+			  (multiple-value-bind (point first-derivative) (evaluate2 self u v :derivs 1)
+			    (let* ((du (first first-derivative))
+				   (dv (first (last first-derivative)))
+				   (normal (vc dv du)))
+			      (when (zerop (vsqrlength normal))
+				(setq normal (vunit (vec3 1 1 1))))
+			      (unless (zerop (vsqrlength normal))
+				(setq normal (vunit normal)))
+			      (push (krma::clampf (vx point)) vertices)
+			      (push (krma::clampf (vy point)) vertices)
+			      (push (krma::clampf (vz point)) vertices)
+			      (push (krma::clampf (vx normal)) vertices)
+			      (push (krma::clampf (vy normal)) vertices)
+			      (push (krma::clampf (vz normal)) vertices)
+			      ))))))
+    
+    (loop for i from 0 below resolution
+	  with k1 with k2
+	  do (setq k1 (* i (1+ resolution))
+		   k2 (+ k1 (1+ resolution)))
+	     (loop for j from 1 to resolution
+		   ;;when (not (= i 0))
+		     do (push k1 indices)
+			(push k2 indices)
+			(push (1+ k1) indices)
+			
+			
+		   when (not (= i resolution))
+		     do (push (1+ k1) indices)
+			(push k2 indices)
+			(push (1+ k2) indices)
+			
+			
+		   do (incf k1)
+		      (incf k2)))
+
+    (setq vertices (nreverse vertices))
+    (setq indices (nreverse indices))
+
+    (print (apply #'max indices))
+
+    (let ((scene (krma::application-scene krma::*app*))
+	  (oid (the krma.gui::object-id))
+	  (color (krma::canonicalize-color (or (the color) #x00ffffff)))
+	  (group (or (the %group-id) :default)))
+      (krma::rm-dispatch-to-render-thread-with-handle (scene draw-data handle)
+	(let ((draw-list (krma::draw-data-3d-triangle-list-with-normals-draw-list draw-data)))
+	  (setf (gethash handle (krma::draw-data-handle-hash-table draw-data))
+		(let* ((va (krma::draw-list-vertex-array draw-list))
+		       (ia (krma::draw-list-index-array draw-list)))
+		  (declare (type krma::foreign-adjustable-array ia va))
+		  (let ((first-index (krma::foreign-array-fill-pointer ia))
+			(vtx-offset (krma::foreign-array-fill-pointer va))
+			(elem-count 0))
+		    (krma::with-draw-list-transaction (%draw-list-draw-b-spline draw-list first-index vtx-offset)
+		      (block krma::block
+			(loop for (x y z nx ny nz) on vertices by #'(lambda (list)
+								      (nthcdr 6 list))
+			      do (krma::standard-3d-vertex-with-normal-array-push-extend va oid x y z nx ny nz color))
+			(loop for index in indices
+			      do (krma::index-array-push-extend ia index)
+				 (incf elem-count))
+			(let ((cmd (krma::make-standard-draw-indexed-cmd
+				    draw-list
+				    first-index elem-count vtx-offset
+				    group nil nil krma::*white-texture* nil nil nil)))
+			  (vector-push-extend cmd (krma::draw-list-cmd-vector draw-list))
+			  cmd)))))))))))
+			      
+										
+										
+										
+										
+										
+	      
+
+;; http://web.mit.edu/hyperbook/Patrikalakis-Maekawa-Cho/node7.html#359
+;; 80-85% of mechanical shapes are composed of planar or cylindrical surfaces,
+;; 90-95% of mechanical shapes are with the addition of cones
+;; and remaining 5-10% are everything else
+;; the remaining 5-10% constitute 95% of the math: quadrics and splines
+
+(defclass standard-form-mixin ()
+  ((center)
+   (xi)
+   (eta)
+   (zeta)
+   (a)
+   (b)
+   (c)))
+
+(defclass ellipsoid-mixin (quadric-mixin) ())
+(defclass elliptic-cone-mixin (quadric-mixin) ())
+(defclass elliptic-cylinder-mixin (quadric-mixin) ())
+(defclass sphere (ellipsoid-mixin) ())
+(defclass ellipsoid (ellipsoid-mixin) ())
+(defclass cone (elliptic-cone-mixin) ())
+(defclass elliptic-cone (elliptic-cone-mixin) ())
+(defclass cylinder (elliptic-cylinder-mixin) ())
+(defclass elliptic-cylinder (elliptic-cone-mixin) ())
+(defclass torus () ())
+(defclass paraboloid (quadric-mixin) ())
+(defclass hyperboloid-mixin (quadric-mixin) ())
+(defclass hyperboloid-of-one-sheet (hyperboloid-mixin) ())
+(defclass hyperboloid-of-two-sheets (hyperboloid-mixin) ())
+(defclass hyperbolic-cylinder (quadric-mixin) ())
+
+
+  
 
 
 (unless (boundp '*global-coordinate-system*)
@@ -3105,6 +3553,25 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 				:normal (vec3 0 1 0)))
 
 (setq *sketch-plane* *xy-plane*)
+
+
 )
+
+(defparameter *nurbs-circle*
+  (make-instance 'b-spline-space-curve
+		 :control-points
+		 (list (vec3 1 0 0)
+		       (vec3 1 2 0)
+		       (vec3 -1 2 0)
+		       (vec3 -1 0 0)
+		       (vec3 -1 -2 0)
+		       (vec3 1 -2 0)
+		       (vec3 1 0 0))
+		 :weights (list 1 1/3 1/3 1 1/3 1/3 1)
+		 :knot-vector (list 0 0 0 0 1/2 1/2 1/2 1 1 1 1)))
+
+(defparameter *nurbs-cylinder*
+  (swept-surface (make-nurbs-line (vec3 0 0 0) (vec3 0 0 1))
+		 *nurbs-circle*))
 
 
