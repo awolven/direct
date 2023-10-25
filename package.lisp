@@ -4,7 +4,7 @@
   (:use :3dm)
   (:shadow #:defclass)
   (:export #:defclass)
-  (:import-from :sb-int #:named-lambda)
+  #+SBCL(:import-from :sb-int #:named-lambda)
   (:import-from :3dm.d
 		#:vec2
 		#:vec3

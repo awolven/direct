@@ -2015,28 +2015,6 @@
 	(mapcar #'(lambda (entry)
 		    (list (/ (car entry) gcd) (/ (cadr entry) gcd))) (nreverse root-list))))))
 
-       
-	 
-       
-		 
-	 
-	
-
-       
-       
-	 
-       
-	 
-	 
-       
-	   
-
-       
-
-	 
-       
-    
-
 (defun roots-of-2d-bezier (control-points intervals epsilon)
   (apply #'append
 	 (mapcar #'(lambda (interval)
@@ -2159,6 +2137,168 @@
     (let ((roots (roots-of-2d-bezier control-points intervals epsilon)))
       (sort (mapcar #'(lambda (s) (+ a (* s (- b a)))) roots) #'<))))
 
+(defmethod 3d-math::mdet ((matrix simple-array))
+  (multiple-value-bind (LU P s) (mlu matrix)
+    (declare (ignore P))
+    (let ((nrows (first (array-dimensions LU))))
+      (loop for det = 1 then (* (expt -1 s) det (aref lu i i))
+	    for i from 0 below nrows
+	    finally (return det)))))
+
+(defmethod 3d-math::mcopy ((matrix simple-array))
+  (destructuring-bind (rows cols) (array-dimensions matrix)
+    (let ((result (make-array `(,rows ,cols) :element-type (array-element-type matrix))))
+      (loop for i from 0 below rows
+	    do (loop for j from 0 below cols
+		     do (setf (aref result i j) (aref matrix i j)))
+	    finally (return result)))))
+
+(defun meyen (n)
+  (let ((m (make-array (list n n) :initial-element 0)))
+    (loop for i from 0 below n
+	  do (setf (aref m i i) 1)
+	  finally (return m))))
+
+(defun mlu (matrix &optional (pivot? t))
+  ;; We're using the Crout method for LU decomposition.
+  ;; See https://en.wikipedia.org/wiki/Crout_matrix_decomposition
+  ;; this comes from Shimera's 3d-matrices library.
+  (flet ((swap-row (m k l)
+	   (let ((s (second (array-dimensions m))))
+	     (dotimes (i s m)
+	       (rotatef (aref m k i) (aref m l i))))))
+	 
+    (let* ((lu (mcopy matrix))
+	   (n (second (array-dimensions matrix)))
+	   (p (meyen n))
+	   (s 0)
+	   (scale (make-array n :initial-element 0)))
+      ;; discover the largest element and save the scaling
+      (loop for i from 0 below n
+	    for big = 0
+	    do (loop for j from 0 below n
+		     for temp = (abs (aref lu i j))
+		     when (< big temp)
+		       do (setq big temp))
+	       (when (= 0 big)
+		 (error "The matrix is singular in ~a:" i))
+	       (setf (aref scale i) big))
+      ;; crout
+      (dotimes (j n (values lu p s))
+	;; part A without diagonal
+	(loop for i from 0 below j
+	      for sum = (aref lu i j)
+	      do (loop for k from 0 below i
+		       do (decf sum (* (aref lu i k) (aref lu k j))))
+		 (setf (aref lu i j) sum))
+	(let ((imax j))
+	  ;; diag + pivot search
+	  (loop with big = 0
+		for i from j below n
+		for sum = (aref lu i j)
+		do (loop for k from 0 below j
+			 do (decf sum (* (aref lu i k) (aref lu k j))))
+		   (setf (aref lu i j) sum)
+		   (when pivot?
+		     (let ((temp (* (abs sum) (aref scale i))))
+		       (when (<= big temp)
+			 (setf big temp)
+			 (setq imax i)))))
+	  ;; pivot swap
+	  (unless (= j imax)
+	    (incf s)
+	    (swap-row lu imax j)
+	    (swap-row p  imax j)
+	    (setf (aref scale imax) (aref scale j)))
+	  ;; division
+	  (when (< j (1- n))
+	    (let ((div (/ (aref lu j j))))
+	      (loop for i from (1+ j) below n
+		    do (setf (aref lu i j) (* (aref lu i j) div))))))))))
+	    
+(defun sylvester-matrix (p q)
+  ;; https://en.wikipedia.org/wiki/Sylvester_matrix
+  (let* ((m (1- (length p)))
+	 (n (1- (length q))))
+    (assert (not (zerop (elt p m))))
+    (assert (not (zerop (elt q n))))
+    (let* ((dim (+ n m))
+	   (matrix (make-array (list dim dim) :initial-element 0)))
+      
+      (loop for i from 0 below n
+	    do (loop for j from 0 to m
+		     for l from i
+		     do (setf (aref matrix i l) (elt p j))))
+
+      (loop for i from 0 below m
+	    for k from n
+	    do (loop for j from 0 to n
+		     for l from i
+		     do (setf (aref matrix k l) (elt q j))))
+      matrix)))
+
+(defun sylvester-resultant (p q)
+  ;; if the sylvester resultant of two polynomials, p and q, is zero,
+  ;; then there exists some common root between the two polynomials
+  ;; https://sci-hub.se/10.1016/B978-044451104-1/50016-2
+  ;; section 15.3.1
+  (mdet (sylvester-matrix p q)))
+
+
+(defun bezout-matrix (p q)
+  ;; https://en.wikipedia.org/wiki/B%C3%A9zout_matrix
+  (let ((n+1 (max (length p) (length q))))
+    (when (/= n+1 (length p))
+      (let ((p-prime (make-array n+1 :element-type (array-element-type p)
+				     :initial-element (coerce 0 (array-element-type p)))))
+	(loop for i from 0 below (length p)
+	      do (setf (aref p-prime i) (aref p i))
+	      finally (setq p p-prime))))
+    (when (/= n+1 (length q))
+      (let ((q-prime (make-array n+1 :element-type (array-element-type q)
+				     :initial-element (coerce 0 (array-element-type q)))))
+	(loop for i from 0 below (length q)
+	      do (setf (aref q-prime i) (aref q i))
+	      finally (setq q q-prime))))
+    (let* ((n (1- n+1))
+	   (b (make-array (list n n))))
+      (loop for i from 0 below n
+	    do (loop for j from 0 below n
+		     do (setf (aref b i j)
+			      (loop for k from 0 to (min i (- n 1 j))
+				    sum (- (* (aref p (+ j k 1)) (aref q (- i k)))
+					   (* (aref p (- i k)) (aref q (+ j k 1)))))))
+	    finally (return b)))))
+
+(defun bezout-resultant (p q)
+  ;; if the bezout resultant of two polynomials, p and q, is zero,
+  ;; then there exists some common root of the polynomials
+  ;; https://sci-hub.se/10.1016/B978-044451104-1/50016-2
+  ;; section 15.3.2
+  (mdet (bezout-matrix p q)))
+
+
+(defun dixon-matrix (p q)
+  (let* ((m (1- (length p)))
+	 (n (1- (length q)))
+	 (D (make-array (list (1+ n) (1+ m)) :initial-element 0)))
+
+    (loop for i from 0 to n
+	  do (loop for j from 0 to m
+		   do (setf (aref D i j) (* (expt -1 (+ i j)) (aref p i) (aref q j))))
+	  finally (return D))))
+  
+			      
+      
+
+(defun quadratic-formula (a b c)
+  (let ((discriminant (sqrt (- (expt b 2) (* 4 a c))))
+	(2a (* 2 a))
+	(-b (- b)))
+    (values (/ (+ -b discriminant) 2a)
+	    (/ (- -b discriminant) 2a))))
+	
+
 (defun intersection-2d-line/circle-1 (line circle)
   (let* ((p0 (send line start))
 	 (p1 (send line end))
@@ -2177,9 +2317,8 @@
 		(- (* 2 (expt y0 2))) (* 2 y0 y1) (* 2 y0 yc) (- (* 2 y1 yc))))
 	 (C2 (+ (expt x0 2) (- (* 2 x0 x1)) (expt x1 2)
 		(expt y0 2) (- (* 2 y0 y1)) (expt y1 2))))
-    ;; could use quadratic formula here.
     ;; returns intersection in parameter space of line
-    (roots-by-projected-polyhedron (vector C0 C1 C2) 0 1)))
+    (quadratic-formula C2 C1 C0)))
 
 (defun intersection-2d-line/circle (line circle)
   (when (eq (send line plane) (send circle plane))
@@ -2212,9 +2351,8 @@
 		(/ (+ (- (* 2 (expt y0 2))) (* 2 y0 y1) (* 2 y0 yc) (- (* 2 y1 yc))) b^2)))
 	 (C2 (+ (/ (+ (expt x0 2) (- (* 2 x0 x1)) (expt x1 2)) a^2)
 		(/ (+ (expt y0 2) (- (* 2 y0 y1)) (expt y1 2)) b^2))))
-    ;; could use quadratic formula here.
     ;; returns intersection in parameter space of line
-    (roots-by-projected-polyhedron (vector C0 C1 C2) 0 1)))
+    (quadratic-formula C2 C1 C0)))
 
 (defun intersection-2d-line/ellipse (line ellipse)
   (when (eq (send line plane) (send ellipse plane))
@@ -2270,7 +2408,7 @@
 	 (C0 (1- (+ (/ (+ (expt p0x 2) (* 2 p0x xc) (expt xc 2)) a^2)
 		    (/ (+ (expt p0y 2) (* 2 p0y yc) (expt yc 2)) b^2)))))
     
-    (roots-by-projected-polyhedron (vector C0 C1 C2 C3 C4 C5 C6) 0 1)))
+    (roots (vector C0 C1 C2 C3 C4 C5 C6))))
 
 (defun implicit-equation-of-a-planar-line (point-1 point-2)
   "return a, b and c in normalized implicit equation of line as ax + by + c = 0, with a^2 + b^2 = 1"
@@ -2630,21 +2768,38 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 			       :end-v (vy end-point)
 			       :coordinate-system plane))))))
 
-(defclass bezier-mixin () ())
+(defclass rational-power-basis-plane-curve (plane-curve-mixin parametric-curve-mixin geometry-mixin)
+  ((wx-polynomial :initarg :wx-polynomial)
+   (wy-polynomial :initarg :wy-polynomial)
+   (w-polynomial :initarg :w-polynomial)
+   (domain :initarg :domain)))
+
+(defmethod evaluate1 ((self rational-power-basis-plane-curve) (parameter real) &key (derivs 0))
+  (let ((domain (the domain)))
+    (assert (<= (first domain) parameter (second domain)))
+    (let* ((wxpoly (the wx-polynomial))
+	   (wypoly (the wy-polynomial))
+	   (wpoly (the w-polynomial))
+	   (w (evaluate-polynomial wpoly parameter)))
+      (vec2 (/ (evaluate-polynomial wxpoly parameter) w)
+	    (/ (evaluate-polynomial wypoly parameter) w)))))
+	       
+    
+
+(defclass bezier-mixin ()
+  ((homogeneous-control-points :type simple-array
+			       :initarg :%homogeneous-control-points)))
 
 (defclass bezier-curve-mixin (bezier-mixin parametric-curve-mixin geometry-mixin)
   ((order :slot-class :virtual
 	  :type fixnum
-	  :getter ((length (the control-points)))
+	  :getter ((length (the homogeneous-control-points)))
 	  :setter ((setter-error 'order self)))
    
    (degree :slot-class :virtual
 	   :type fixnum
 	   :getter ((1- (the order)))
 	   :setter ((setter-error 'degree self)))
-   
-   (control-points :initarg :control-points
-		   :initarg control-points)
 
    (domain :slot-class :virtual
 	   :type cl:list
@@ -2653,14 +2808,15 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 
    (degenerate? :slot-class :virtual
 		:type boolean
-		:getter ((let ((cpoints (the control-points)))
+		:getter ((let ((cpoints (the homogeneous-control-points)))
 			   (loop for i from 0 below (the degree)
 				 always (v= (elt cpoints i) (elt cpoints (1+ i))))))
 		:setter ((setter-error 'degenerate? self)))
 
    (closed? :slot-class :virtual
 	    :type boolean
-	    :getter ((v= (elt (the control-points) 0) (elt (the control-points) (the degree))))
+	    :getter ((v= (elt (the homogeneous-control-points) 0)
+			 (elt (the homogeneous-control-points) (the degree))))
 	    :setter ((setter-error 'closed? self)))
    
    (periodic? :slot-class :virtual
@@ -2668,11 +2824,10 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 	      :getter (nil)
 	      :setter ((setter-error 'periodic? self)))))
 
-
 (defclass bezier-space-curve (space-curve-mixin bezier-curve-mixin entity-mixin)
   ((rational? :slot-class :virtual
 	      :type boolean
-	      :getter ((let ((cpoints (the control-points)))
+	      :getter ((let ((cpoints (the homogeneous-control-points)))
 			 (not
 			  (loop for cpoint across cpoints
 				always (= (vw cpoint) 1.0d0)))))
@@ -2682,41 +2837,63 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 (defclass bezier-plane-curve (plane-curve-mixin bezier-curve-mixin entity-mixin)
   ((rational? :slot-class :virtual
 	      :type boolean
-	      :getter ((let ((cpoints (the control-points)))
+	      :getter ((let ((cpoints (the homogeneous-control-points)))
 			 (not
 			  (loop for cpoint across cpoints
 				always (= (vz cpoint) 1.0d0)))))
 	      :setter ((setter-error 'rational? self)))))
 
 
-(defmethod initialize-instance ((self bezier-curve-mixin) &rest initargs)
-  (let ((cpoints (or (getf initargs :control-points)
-		     (getf initargs 'control-points))))
-    
-    (assert cpoints)
-    
-    (when (listp cpoints)
-      (setq cpoints (coerce cpoints 'vector)))
-    
-    (call-next-method self :control-points cpoints)))
 
-(defmethod initialize-instance :after ((self bezier-space-curve) &rest initargs)
-  (declare (ignore initargs))
-  (let ((cpoints (the control-points)))
-    (loop for cpoint across cpoints for i from 0
-	  do (cond ((typep cpoint 'vec3) (setf (aref cpoints i) (3dm.d::%vec4 (vx cpoint) (vy cpoint) (vz cpoint) 1.0d0)))
-		   ((typep cpoint 'vec4) t)
-		   (t (error "invalid control point type for space curve: ~S ~S" (type-of cpoint) cpoint))))
-    (values)))
+(defmethod initialize-instance ((self bezier-plane-curve)
+				&rest initargs &key %homogeneous-control-points control-points weights)
+  (if %homogeneous-control-points
+      
+      (call-next-method)
+      
+      (let ((cpoints (or (getf initargs :control-points)
+			 (getf initargs 'control-points)))
+	    (weights (or (getf initargs :weights)
+			 (getf initargs 'weights)
+			 (make-array (length cpoints) :initial-element 1.0d0))))
+    
+	(assert cpoints)
+    
+	(when (listp cpoints)
+	  (setq cpoints (coerce cpoints 'vector)))
+	
+	(call-next-method self
+			  :%homogeneous-control-points
+			  (map 'vector #'(lambda (cp w)
+					   (vec3 (* w (vx cp)) (* w (vy cp)) w))
+			       cpoints
+			       weights)))))
 
-(defmethod initialize-instance :after ((self bezier-plane-curve) &rest initargs)
-  (declare (ignore initargs))
-  (let ((cpoints (the control-points)))
-    (loop for cpoint across cpoints for i from 0
-	  do (cond ((typep cpoint 'vec2)(setf (aref cpoints i) (3dm.d::%vec3 (vx cpoint) (vy cpoint) 1.0d0)))
-		   ((typep cpoint 'vec3) t)
-		   (t (error "invalid control point type for plane curve: ~S ~S" (type-of cpoint) cpoint))))
-    (values)))
+(defmethod initialize-instance ((self bezier-space-curve)
+				&rest initargs &key %homogeneous-control-points control-points weights)
+  (if %homogeneous-control-points
+      
+      (call-next-method)
+      
+      (let ((cpoints (or (getf initargs :control-points)
+			 (getf initargs 'control-points)))
+	    (weights (or (getf initargs :weights)
+			 (getf initargs 'weights)
+			 (make-array (length cpoints) :initial-element 1.0d0))))
+    
+	(assert cpoints)
+    
+	(when (listp cpoints)
+	  (setq cpoints (coerce cpoints 'vector)))
+	
+	(call-next-method self
+			  :%homogeneous-control-points
+			  (map 'vector #'(lambda (cp w)
+					   (vec4 (* w (vx cp)) (* w (vy cp)) (* w (vz cp)) w))
+			       cpoints
+			       weights)))))
+
+
 
 (declaim (ftype (function (simple-array double-float) vec3) decasteljau1))
 (defun decasteljau1 (P u)
@@ -2776,6 +2953,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 	  finally (return B))))
 
 (defmethod evaluate1 ((self bezier-plane-curve) (parameter real) &key (derivs 0))
+  ;; todo: make work for rational curves
   (declare (optimize (speed 3) (safety 3)))
   (setq parameter (coerce parameter 'double-float))
   (let* ((n (the degree)))
@@ -2788,6 +2966,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 	    finally (return C)))))
 
 (defmethod evaluate1 ((self bezier-space-curve) (parameter real) &key (derivs 0))
+  ;; todo: make work for rational curves
   (declare (optimize (speed 3) (safety 3)))
   (setq parameter (coerce parameter 'double-float))
   (let* ((n (the degree)))
@@ -2937,14 +3116,236 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
       (loop for i from 0 to p
 	    do (setq Cw (v+ Cw (v* (aref basis-funs i)
 				   (aref cpoints (+ (- span p) i)))))
-	    finally (return (vec2 (/ (vx Cw) (print (vz Cw))) (/ (vy Cw) (vz Cw))))))))
+	    finally (return (vec2 (/ (vx Cw) (vz Cw)) (/ (vy Cw) (vz Cw))))))))
+
+(defun find-multiplicity (p knot-vector span u)
+  (declare (ignore p span))
+  (loop for knot across knot-vector with count = 0
+     when (= u knot)
+     do (incf count)
+     finally (return count)))
+
+(defun curve-knot-insertion (p UP Pw u r)
+  "Compute new curve from knot insertion."
+  ;; Algorithm A5.1 pg. 151 _The Nurbs Book_ 2nd edition
+  (let* ((np (1- (length Pw)))
+	 (k (find-span np p u UP))
+	 (s (find-multiplicity p UP nil u))
+	 (mp (+ 1 np p))
+	 (nq (+ np r))
+	 (Rw (make-array (1+ p)))
+	 (UQ (make-array (+ (length UP) r)))
+	 (Qw (make-array (1+ nq)))
+	 (L)
+	 (alpha))
+
+    ;; Load the new knot-vector
+    (loop for i from 0 to k
+       do (setf (elt UQ i) (elt UP i)))
+
+    (loop for i from 1 to r
+       do (setf (elt UQ (+ k i)) u))
+
+    (loop for i from (1+ k) to mp
+       do (setf (elt UQ (+ i r)) (elt UP i)))
+
+    ;; save unaltered control points
+    (loop for i from 0 to (- k p)
+       do (setf (elt Qw i) (elt Pw i)))
+
+    (loop for i from (- k s) to np
+       do (setf (elt Qw (+ i r)) (elt Pw i)))
+
+    (loop for i from 0 to (- p s)
+       do (setf (elt Rw i) (elt Pw (+ (- k p) i))))
+
+    ;; insert the knot r times
+    (loop for j from 1 to r
+       do (setq L (+ (- k p) j))
+	 (loop for i from 0 to (- p j s)
+	    do (setq alpha (/ (- u (elt UP (+ L i)))
+			      (- (elt UP (+ i k 1))
+				 (elt UP (+ L i)))))
+	      (setf (elt Rw i) (v+ (v* alpha (aref Rw (1+ i)))
+				   (v* (- 1.0d0 alpha) (aref Rw i)))))
+	 (setf (elt Qw L) (elt Rw 0))
+	 (setf (elt Qw (+ k r (- j) (- s))) (elt Rw (- p j s))))
+
+    ;; load remaining control points
+    (loop for i from (1+ L) below (- k s)
+       do (setf (elt Qw i) (elt Rw (- i L))))
+    (values nq UQ Qw)))
+
+(defmethod insert-knot ((self b-spline-curve-mixin) (knot real) (multiplicity fixnum))
+  (let ((p (the degree))
+	(UP (the knot-vector))
+	(Pw (the homogeneous-control-points)))
+    (multiple-value-bind (nq UQ Qw) (curve-knot-insertion p UP Pw knot multiplicity)
+      (declare (ignore nq))
+      (make-instance (class-of self)
+		     :%homogeneous-control-points Qw
+		     :knot-vector UQ))))
+
+(defun number-of-interior-knot-spans (knot-vector)
+  (loop for i from 0 below (1- (length knot-vector))
+	unless (= (elt knot-vector i) (elt knot-vector (1+ i)))
+	  sum 1))
 
 
-      
+(defun decompose-curve-1 (p knot-vector Pw)
+  "Decompose curve into Bezier segments."
+  ;; Algorithm A5.6 pg. 173-176 _The Nurbs Book_ 2nd edition
+  (let* ((n (1- (length Pw)))
+	 (m (+ n p 1))
+	 (a p)
+	 (b (1+ p))
+	 (nb 0)
+	 (nspans (number-of-interior-knot-spans knot-vector))
+	 (spans (make-array nspans :initial-element t))
+	 (alphas (make-array nspans))
+	 (Qw (make-array nspans)))
+    
+    (loop for i from 0 below nspans
+	  do (setf (aref Qw i) (make-array (1+ p) :initial-element nil)))
+
+    (loop for i from 0 to p
+	  do (setf (aref (aref Qw nb) i) (aref Pw i)))
+
+    (setf (aref spans nb) (vector (aref knot-vector (1- b)) (aref knot-vector b)))
+    
+    (loop while (< b m)
+	  do (let ((i b))
+
+	       (loop while (and (< b m) (= (aref knot-vector (1+ b)) (aref knot-vector b)))
+		     do (incf b))
+	       (let ((mult (1+ (- b i))))
+		 (when (< mult p)
+		   ;; numerator of alpha
+		   (let ((numer (- (aref knot-vector b) (aref knot-vector a))))
+		     ;; compute and store alphas
+		     (loop for j from p downto (1+ mult)
+			   do
+			      (setf (aref alphas (- j mult 1)) (/ numer (- (aref knot-vector (+ a j))
+									   (aref knot-vector a))))))
+		   ;; insert knot r times
+		   (let ((r (- p mult))
+			 (save)
+			 (s))
+		     (loop for j from 1 to r
+			   do (setq save (- r j))
+			      (setq s (+ mult j)) ;; this many new points
+			      (let ((alpha))
+				(loop for k from p downto s
+				      do (setq alpha (aref alphas (- k s)))
+					 (setf (aref (aref Qw nb) k)
+					       (v+ (v* alpha (aref (aref Qw nb) k))
+						   (v* (- 1.0d0 alpha) (aref (aref Qw nb) (1- k)))))))
+			      (when (< b m)
+				;; control point of next segment
+				(setf (aref Qw (1+ nb)) save) (aref (aref Qw nb) p)))))
+		 (incf nb) ;; bezier segment completed
+		 (when (< b m)
+		   ;; initialize for next segment
+		   (loop for i from (- p mult) to p
+			 do (setf (aref (aref Qw nb) i) (aref Pw (+ (- b p) i))))
+		   (setq a b)
+		   (incf b)
+		   (setf (aref spans nb) (vector (aref knot-vector (1- b)) (aref knot-vector b)))))))
+    
+    (values Qw spans)))
+
+(defmethod decompose-curve ((self b-spline-curve-mixin))
+  (let* ((knot-vector (the knot-vector))
+	 (degree (the degree))
+	 (control-points (the homogeneous-control-points)))
+    (multiple-value-bind (Qws spans) (decompose-curve-1 degree knot-vector control-points)
+      (declare (ignore spans))
+      (let ((class (find-class
+		    (etypecase self
+		      (space-curve-mixin 'bezier-space-curve)
+		      (plane-curve-mixin 'bezier-plane-curve)))))
+	(map 'list #'(lambda (cpoints)
+		      (make-instance class :%homogeneous-control-points cpoints))
+	     Qws)))))
+
+(defmethod power-basis ((self b-spline-plane-curve))
+  (multiple-value-bind (Qws spans)
+      (decompose-curve-1 (the degree) (the knot-vector) (the homogeneous-control-points))
+    (loop for cpoints across Qws
+	  for span across spans
+	  collect
+	  (let ((points (make-array (list (length cpoints) 3)
+				    :element-type 'number :initial-element 0.0d0)))
+	    (loop for i from 0 below (length cpoints)
+		  do (let ((cpoint (aref cpoints i)))
+		       (setf (aref points i 0) (vx cpoint)
+			     (aref points i 1) (vy cpoint)
+			     (aref points i 2) (vz cpoint))))
+	    (let* ((R (reparameterization-matrix (1- (length cpoints)) (elt span 0) (elt span 1)))
+		   (M (bezier-to-power-basis-matrix (1- (length cpoints)))))
+	      (flet ((the-col (matrix i)
+		       (let ((vector (make-array (length cpoints))))
+			 (loop for k from 0 below (length cpoints)
+			       do (setf (aref vector k) (aref matrix k i)))
+			 vector)))
+		(let ((matrix (m* R M points)))
+		  (make-instance 'rational-power-basis-plane-curve
+				 :wx-polynomial (the-col matrix 0)
+				 :wy-polynomial (the-col matrix 1)
+				 :w-polynomial (the-col matrix 2)
+				 :domain (list (elt span 0) (elt span 1))))))))))
+    
+			
+
+(defun reparameterization-matrix (degree ui ui+1)
+  (let* ((c (/ (- ui+1 ui)))
+	 (d (- (* ui c)))
+	 (R (make-array (list (1+ degree) (1+ degree)) :initial-element 0)))
+    (loop for j from 0 to degree
+	  do (loop for i from 0 to degree
+		   when (<= i j)
+		     do (setf (aref R i j) (* (binomial-coefficient j i) (expt c i) (expt d (- j i)))))
+	  finally (return R))))
+
+(defun bezier-to-power-basis-matrix (degree)
+  (let ((M (make-array (list (1+ degree) (1+ degree)) :initial-element 0)))
+    ;; shouldn't this be the same as bernstein-to-monomial?
+    ;; set corner elements
+    (setf (aref M 0 0)
+	  (setf (aref M degree degree) 1.0d0))
+    (if (not (zerop (mod degree 2))) ;; um oddp?
+	(setf (aref M degree 0) -1.0d0)
+	(setf (aref M degree 0) 1.0d0))
+    (let ((sign -1))
+      (loop for i from 1 below degree ;; compute the first column, last row, and the diagonal.
+	    do (setf (aref M i i) (binomial-coefficient degree i))
+	       (setf (aref M i 0)
+		     (setf (aref M degree (- degree i))
+			   (* sign (aref M i i))))
+	       (setq sign (- sign)))
+      ;; compute the remaining elements
+      (let ((k1 (floor (1+ degree) 2))
+	    (pk (1- degree)))
+	(loop for k from 1 below k1
+	      do (setq sign -1)
+		 (loop for j from (1+ k) to pk
+		       do (setf (aref M j k)
+				(setf (aref M pk (- degree j))
+				      (* sign (binomial-coefficient degree k)
+					 (binomial-coefficient (- degree k) (- j k)))))
+			  (setq sign (- sign)))
+		 (decf pk)
+	      finally (return M))))))
 
 
+	
+
+	 
+	 
+	 
 
 
+    
 
 (defun make-nurbs-line (a b)
   (make-instance 'b-spline-space-curve
@@ -3567,6 +3968,19 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 		       (vec3 -1 -2 0)
 		       (vec3 1 -2 0)
 		       (vec3 1 0 0))
+		 :weights (list 1 1/3 1/3 1 1/3 1/3 1)
+		 :knot-vector (list 0 0 0 0 1/2 1/2 1/2 1 1 1 1)))
+
+(defparameter *nurbs-circle2*
+  (make-instance 'b-spline-plane-curve
+		 :control-points
+		 (list (vec2 1 0)
+		       (vec2 1 2)
+		       (vec2 -1 2)
+		       (vec2 -1 0)
+		       (vec2 -1 -2)
+		       (vec2 1 -2)
+		       (vec2 1 0))
 		 :weights (list 1 1/3 1/3 1 1/3 1/3 1)
 		 :knot-vector (list 0 0 0 0 1/2 1/2 1/2 1 1 1 1)))
 
