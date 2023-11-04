@@ -1009,9 +1009,8 @@
 	   (vec3 (+ (* u (vx x-axis)) (* v (vx y-axis)) (vx origin))
 		 (+ (* u (vy x-axis)) (* v (vy y-axis)) (vy origin))
 		 (+ (* u (vz x-axis)) (* v (vz y-axis)) (vy origin)))))
-    (cond ((and (= derivs-u 0)(= derivs-v 1)) (values value (the y-axis)))
-	  ((and (= derivs-u 1)(= derivs-v 0)) (values value (the x-axis)))
-	  (t (apply #'values value (make-list (max derivs-u derivs-v) :initial-element (vec3 0 0 0)))))))
+    (cond ((= derivs 1) (values value (list (the x-axis) (the y-axis))))
+	  (t (apply #'values value (make-list derivs :initial-element (vec3 0 0 0)))))))
 
 (defmethod u-iso ((self plane) (parameter real))
   (setq parameter (coerce parameter 'double-float))
@@ -1231,9 +1230,9 @@
 (defclass offset-curve (offset-mixin curve-mixin)
   ((basis-curve)))
 
-(defclass plane-curve-mixin () ())
+(defclass plane-curve-mixin (2d-mixin) ())
 
-(defclass space-curve-mixin () ())
+(defclass space-curve-mixin (3d-mixin) ())
 
 (defclass implicit-curve-mixin (implicit-mixin) ())
 
@@ -1818,10 +1817,12 @@
   ;; https://www.semanticscholar.org/reader/87211188ec3548cd115e82442daf2513d5c5aa9a p.267-268
 
   (let* ((p (map 'vector #'rationalize f))
-	 (denoms (map 'list #'denominator p))
-	 (gcd (apply #'gcd denoms)))
+	 #+NIL(denoms (map 'list #'denominator p))
+	 #+NIL(gcd (apply #'gcd denoms)))
 
-    (setq p (map 'vector #'(lambda (rat) (* rat gcd)) p))
+    #+NIL(setq p (map 'vector #'(lambda (rat) (* rat gcd)) p))
+
+    (print p)
 	
     (flet ((evaluate-polynomial (p x)
 	     (loop for i from 0 below (length p)
@@ -1865,6 +1866,9 @@
 	   (setq root-list ())
 
 	   (setq s (descartes-rule-of-signs p))
+
+	   (print s)
+	   (print p)
 
 	   (when (zerop s)
 	     (return-from isolate-roots-vas-cf nil))
@@ -1935,7 +1939,7 @@
 	   (print 's1)
 	   (print s1)
 
-	   (setq s2 (- s1 r))  ;; (- s s1 r) ;;typo?
+	   (setq s2 (- s s1 r))  ;; (- s s1 r) ;;typo?
 	   (print 'r)
 	   (print r)
 
@@ -2011,8 +2015,10 @@
 	   (go step-2)
 	   
 	 exit)
-	
-	(mapcar #'(lambda (entry)
+
+	(nreverse root-list)
+	#+NIL
+	(mapcar #'(lambda (entry) ;; what makes you think you can do this?
 		    (list (/ (car entry) gcd) (/ (cadr entry) gcd))) (nreverse root-list))))))
 
 (defun roots-of-2d-bezier (control-points intervals epsilon)
@@ -2073,12 +2079,12 @@
 	    s)))))
 
 (defun intersection-2d-line/2d-line (line-a line-b)
-  (when (eq (send line-a plane) (send line-b plane))
+  (when (eq (send line-a coordinate-system) (send line-b coordinate-system))
     (let ((intersection (ray-intersects-line-segment? (send line-a start) (send line-a span) (send line-b start) (send line-b end))))
       (when intersection
 	(evaluate1 line-a intersection)))))
 
-(defmethod intersection2 ((line-a 2d-line) (line-b 2d-line))
+(defmethod intersection ((line-a 2d-line) (line-b 2d-line))
   (intersection-2d-line/2d-line line-a line-b))	
 
 (defun convex-polygon-domain (polygon)
@@ -2112,7 +2118,7 @@
     n))
        
 
-(defun roots (polynomial &optional (epsilon 1.0d-20))
+(defun roots (polynomial &optional (epsilon 1.0d-15))
   (let* ((intervals (isolate-roots-vas-cf polynomial)))
     (sort (apply #'append
 		 (mapcar #'(lambda (interval)
@@ -2321,14 +2327,14 @@
     (quadratic-formula C2 C1 C0)))
 
 (defun intersection-2d-line/circle (line circle)
-  (when (eq (send line plane) (send circle plane))
+  (when (eq (send line coordinate-system) (send circle coordinate-system))
     (let ((roots (intersection-2d-line/circle-1 line circle)))
       (apply #'values (mapcar #'(lambda (root) (evaluate1 line root)) roots)))))
 
-(defmethod intersection2 ((line 2d-line) (circle circle))
+(defmethod intersection ((line 2d-line) (circle circle))
   (intersection-2d-line/circle line circle))
 
-(defmethod intersection2 ((circle circle) (line 2d-line))
+(defmethod intersection ((circle circle) (line 2d-line))
   (intersection-2d-line/circle line circle))
   
 (defun intersection-2d-line/ellipse-1 (line ellipse)
@@ -2355,14 +2361,14 @@
     (quadratic-formula C2 C1 C0)))
 
 (defun intersection-2d-line/ellipse (line ellipse)
-  (when (eq (send line plane) (send ellipse plane))
+  (when (eq (send line coordinate-system) (send ellipse coordinate-system))
     (let ((roots (intersection-2d-line/ellipse-1 line ellipse)))
       (apply #'values (mapcar #'(lambda (root) (evaluate1 line root)) roots)))))
 
-(defmethod intersection2 ((line 2d-line) (ellipse ellipse))
+(defmethod intersection ((line 2d-line) (ellipse ellipse))
   (intersection-2d-line/ellipse line ellipse))
 
-(defmethod intersection2 ((ellipse ellipse) (line 2d-line))
+(defmethod intersection ((ellipse ellipse) (line 2d-line))
   (intersection-2d-line/ellipse line ellipse))
 
 (defun intersection-planar-cubic-bezier/ellipse-1 (bezier ellipse)
@@ -2409,6 +2415,62 @@
 		    (/ (+ (expt p0y 2) (* 2 p0y yc) (expt yc 2)) b^2)))))
     
     (roots (vector C0 C1 C2 C3 C4 C5 C6))))
+
+(defun intersection-planar-rational-quadratic-bezier/planar-rational-quadratic-bezier-1 (bezier-a bezier-b)
+  (let* ((cpoints-a (send bezier-a homogeneous-control-points))
+	 (cpoints-b (send bezier-b homogeneous-control-points))
+	 (a0 (aref cpoints-a 0))
+	 (a1 (aref cpoints-a 1))
+	 (a2 (aref cpoints-a 2))
+	 (b0 (aref cpoints-b 0))
+	 (b1 (aref cpoints-b 1))
+	 (b2 (aref cpoints-b 2))
+	 (xa0 (rationalize (vx a0)))
+	 (ya0 (rationalize (vy a0)))
+	 (wa0 (rationalize (vz a0)))
+	 (xa1 (rationalize (vx a1)))
+	 (ya1 (rationalize (vy a1)))
+	 (wa1 (rationalize (vz a1)))
+	 (xa2 (rationalize (vx a2)))
+	 (ya2 (rationalize (vy a2)))
+	 (wa2 (rationalize (vz a2)))
+	 (xb0 (rationalize (vx b0)))
+	 (yb0 (rationalize (vy b0)))
+	 (wb0 (rationalize (vz b0)))
+	 (xb1 (rationalize (vx b1)))
+	 (yb1 (rationalize (vy b1)))
+	 (wb1 (rationalize (vz b1)))
+	 (xb2 (rationalize (vx b2)))
+	 (yb2 (rationalize (vy b2)))
+	 (wb2 (rationalize (vz b2))))
+    (roots (vector (rational-quadratic-bezier/quadratic-bezier-c0
+		    xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
+		   (rational-quadratic-bezier/quadratic-bezier-c1
+		    xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
+		   (rational-quadratic-bezier/quadratic-bezier-c2
+		    xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
+		   (rational-quadratic-bezier/quadratic-bezier-c3
+		    xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
+		   (rational-quadratic-bezier/quadratic-bezier-c4
+		    xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)))))
+
+(defmethod intersection ((bezier-a bezier-plane-curve) (bezier-b bezier-plane-curve))
+  (intersection-planar-rational-bezier/planar-rational-bezier bezier-a bezier-b))
+
+(defun intersection-planar-rational-bezier/planar-rational-bezier (bezier-a bezier-b)
+  (when (eq (send bezier-a coordinate-system) (send bezier-b coordinate-system))
+    (let ((deg-a (send bezier-a degree))
+	  (deg-b (send bezier-b degree)))
+
+      (cond ((and (= deg-a 2) (= deg-b 2))
+	     (let ((roots
+		     (intersection-planar-rational-quadratic-bezier/planar-rational-quadratic-bezier-1
+		      bezier-a bezier-b)))
+	       (mapcar #'(lambda (root)
+			   (evaluate1 bezier-b root)) roots)))))))
+  
+	 
+	      
 
 (defun implicit-equation-of-a-planar-line (point-1 point-2)
   "return a, b and c in normalized implicit equation of line as ax + by + c = 0, with a^2 + b^2 = 1"
@@ -2603,6 +2665,7 @@
 (defclass tangent (object-snap-mixin)
   ())
 
+#+NIL
 (defclass intersection (object-snap-mixin)
   ((object2)
    (pick-location2)))
@@ -2846,16 +2909,16 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 
 
 (defmethod initialize-instance ((self bezier-plane-curve)
-				&rest initargs &key %homogeneous-control-points control-points weights)
+				&rest initargs &key %homogeneous-control-points &allow-other-keys)
   (if %homogeneous-control-points
       
       (call-next-method)
       
-      (let ((cpoints (or (getf initargs :control-points)
-			 (getf initargs 'control-points)))
-	    (weights (or (getf initargs :weights)
-			 (getf initargs 'weights)
-			 (make-array (length cpoints) :initial-element 1.0d0))))
+      (let* ((cpoints (or (getf initargs :control-points)
+			  (getf initargs 'control-points)))
+	     (weights (or (getf initargs :weights)
+			  (getf initargs 'weights)
+			  (make-array (length cpoints) :initial-element 1.0d0))))
     
 	(assert cpoints)
     
@@ -2870,16 +2933,16 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 			       weights)))))
 
 (defmethod initialize-instance ((self bezier-space-curve)
-				&rest initargs &key %homogeneous-control-points control-points weights)
+				&rest initargs &key %homogeneous-control-points &allow-other-keys)
   (if %homogeneous-control-points
       
       (call-next-method)
       
-      (let ((cpoints (or (getf initargs :control-points)
-			 (getf initargs 'control-points)))
-	    (weights (or (getf initargs :weights)
-			 (getf initargs 'weights)
-			 (make-array (length cpoints) :initial-element 1.0d0))))
+      (let* ((cpoints (or (getf initargs :control-points)
+			  (getf initargs 'control-points)))
+	     (weights (or (getf initargs :weights)
+			  (getf initargs 'weights)
+			  (make-array (length cpoints) :initial-element 1.0d0))))
     
 	(assert cpoints)
     
@@ -2959,11 +3022,11 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
   (let* ((n (the degree)))
     (declare (type fixnum n))
     (let* ((B (bernstein n parameter))
-	   (C (3dm.d::%vec2 0.0d0 0.0d0))
-	   (P (the control-points)))
+	   (C (3dm.d::%vec3 0.0d0 0.0d0 0.0d0))
+	   (P (the homogeneous-control-points)))
       (loop for k from 0 to n
-	    do (setq C (v+ (cl:the vec2 C) (v* (cl:the double-float (aref B k)) (cl:the vec2 (elt P k)))))
-	    finally (return C)))))
+	    do (setq C (v+ (cl:the vec3 C) (v* (cl:the double-float (aref B k)) (cl:the vec3 (elt P k)))))
+	    finally (return (3dm.d::%vec2 (/ (vx C) (vz C)) (/ (vy C) (vz C))))))))
 
 (defmethod evaluate1 ((self bezier-space-curve) (parameter real) &key (derivs 0))
   ;; todo: make work for rational curves
@@ -3263,9 +3326,11 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
       (let ((class (find-class
 		    (etypecase self
 		      (space-curve-mixin 'bezier-space-curve)
-		      (plane-curve-mixin 'bezier-plane-curve)))))
+		      (plane-curve-mixin 'bezier-plane-curve))))
+	    (coordinate-system (the coordinate-system)))
 	(map 'list #'(lambda (cpoints)
-		      (make-instance class :%homogeneous-control-points cpoints))
+		       (make-instance class :%homogeneous-control-points cpoints
+				      :coordinate-system coordinate-system))
 	     Qws)))))
 
 (defmethod power-basis ((self b-spline-plane-curve))
@@ -3349,6 +3414,12 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 
 (defun make-nurbs-line (a b)
   (make-instance 'b-spline-space-curve
+		 :control-points
+		 (list a b)
+		 :knot-vector (list 0 0 1 1)))
+
+(defun make-nurbs-line2 (a b)
+  (make-instance 'b-spline-plane-curve
 		 :control-points
 		 (list a b)
 		 :knot-vector (list 0 0 1 1)))
@@ -3989,3 +4060,5 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 		 *nurbs-circle*))
 
 
+(defparameter *nurbs-line*
+  (make-nurbs-line2 (vec2 -3 -3) (vec2 3 3)))

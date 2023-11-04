@@ -4,6 +4,8 @@
   (:use :3dm)
   (:shadow #:defclass)
   (:export #:defclass)
+  (:shadow #:intersection)
+  (:export #:intersection)
   #+SBCL(:import-from :sb-int #:named-lambda)
   (:import-from :3dm.d
 		#:vec2
