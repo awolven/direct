@@ -2454,8 +2454,7 @@
 		   (rational-quadratic-bezier/quadratic-bezier-c4
 		    xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)))))
 
-(defmethod intersection ((bezier-a bezier-plane-curve) (bezier-b bezier-plane-curve))
-  (intersection-planar-rational-bezier/planar-rational-bezier bezier-a bezier-b))
+
 
 (defun intersection-planar-rational-bezier/planar-rational-bezier (bezier-a bezier-b)
   (when (eq (send bezier-a coordinate-system) (send bezier-b coordinate-system))
@@ -2924,13 +2923,22 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
     
 	(when (listp cpoints)
 	  (setq cpoints (coerce cpoints 'vector)))
+
+	(remf initargs 'control-points)
+	(remf initargs :control-points)
+	(remf initargs 'weights)
+	(remf initargs :weights)
 	
-	(call-next-method self
-			  :%homogeneous-control-points
-			  (map 'vector #'(lambda (cp w)
-					   (vec3 (* w (vx cp)) (* w (vy cp)) w))
-			       cpoints
-			       weights)))))
+	(apply #'call-next-method self
+	       :%homogeneous-control-points
+	       (map 'vector #'(lambda (cp w)
+				(vec3 (* w (vx cp)) (* w (vy cp)) w))
+		    cpoints
+		    weights)
+	       initargs))))
+
+(defmethod intersection ((bezier-a bezier-plane-curve) (bezier-b bezier-plane-curve))
+  (intersection-planar-rational-bezier/planar-rational-bezier bezier-a bezier-b))
 
 (defmethod initialize-instance ((self bezier-space-curve)
 				&rest initargs &key %homogeneous-control-points &allow-other-keys)
@@ -2948,13 +2956,19 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
     
 	(when (listp cpoints)
 	  (setq cpoints (coerce cpoints 'vector)))
+
+	(remf initargs 'control-points)
+	(remf initargs :control-points)
+	(remf initargs 'weights)
+	(remf initargs :weights)
 	
-	(call-next-method self
-			  :%homogeneous-control-points
-			  (map 'vector #'(lambda (cp w)
-					   (vec4 (* w (vx cp)) (* w (vy cp)) (* w (vz cp)) w))
-			       cpoints
-			       weights)))))
+	(apply #'call-next-method self
+	       :%homogeneous-control-points
+	       (map 'vector #'(lambda (cp w)
+				(vec4 (* w (vx cp)) (* w (vy cp)) (* w (vz cp)) w))
+		    cpoints
+		    weights)
+	       initargs))))
 
 
 

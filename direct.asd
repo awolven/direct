@@ -8,4 +8,6 @@
   :components
   ((:file "package")
    (:file "dml-class")
+   (:file "intersection-rational-quadratic-beziers")
+   (:file "intersection-rational-cubic-beziers")
    (:file "entities")))
