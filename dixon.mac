@@ -1,0 +1,107 @@
+(defun $full_rank_submatrix (M)
+  (let ((rows (linear_dependent_columns ($transpose M)))
+	(cols (linear_dependent_columns M)))
+    ($apply '$submatrix (append '((mlist)) rows (list M) cols))))
+   
+(defun linear_dependent_columns (M)
+  (loop for i from (second ($matrix_size M)) downto 1
+     with sub
+     with cols = nil
+     with rank = ($rank M)
+     do (setq sub (apply '$submatrix M (cons i cols)))
+       (when (= rank ($rank sub))
+	 (setq cols (cons i cols)))
+     finally (return cols)))
+
+(defun degree_combinations (number-of-variables max-degree)
+  (assert (evenp number-of-variables))
+  (let ((vars (loop for i from 0 below number-of-variables
+		 collect (gensym))))
+    (let* ((combinations (eval (expand-loops vars vars max-degree)))
+	   (collect-length (floor (sqrt (length combinations)))))
+      (cons '(maxima::mlist)
+      (loop for i from 0 below collect-length
+      	 collect (cons '(maxima::mlist) (subseq combinations (* i collect-length) (* (1+ i) collect-length))))))))
+
+(defun expand-loops (rest-variables all-variables max-degree)
+  (if (null rest-variables)
+      `(list (list '(maxima::mlist) ,@all-variables))
+      `(loop for ,(car rest-variables) from 0 to ,max-degree
+	    append
+	    ,(expand-loops (cdr rest-variables) all-variables max-degree))))
+      
+  
+
+monomials(p,vars) :=
+    block([inflag:true],
+       p: apply('facsum,cons('?zwzwz * p, vars)),
+       if mapatom(p) or op(p)#"+" then [p / '?zwzwz]
+else args( p ) / '?zwzwz );
+
+monomial_coefficients(monomial, vars, max_degree) :=
+ block([coef:monomial,
+        n_vars: length(vars),
+        test],
+       for i from 1 thru n_vars
+        do for j from 1 thru max_degree
+	    do block(test: ratcoef(coef, vars[i], j),
+	             if test # 0
+		      then coef: test),
+       coef);
+
+dixon_polynomial(polynomials, vars) :=
+ block([n_polys: length(polynomials),
+        n_vars: length(vars),
+        new_vars: makelist(0,length(vars))],
+       if n_vars+1#n_polys
+        then error("number of polynomials must be one greater than number of variables"),
+       for i from 1 thru n_vars
+        do new_vars[i]:gensym(concat(string(vars[i]),"_")),
+       CM:genmatrix(lambda([i,j], 0),n_polys,n_polys),
+       for i from 1 thru n_polys
+        do for j from 1 thru n_polys
+            do if i = 1
+                then CM[i,j]: polynomials[j]
+                else CM[i,j]:subst([''vars[i-1]=''new_vars[i-1]],''CM[i-1,j]),
+       for i from n_polys thru 2 step -1
+        do block([dv:vars[i-1] - new_vars[i-1]],
+	         for j from 1 thru n_polys
+		  do CM[i,j]:ratsimp((CM[i,j]-CM[i-1,j])/dv)),
+        [apply('collectterms, cons(expand(determinant(CM)), append(vars, new_vars))), vars, new_vars]);
+
+coeffs(polynomial, vars, degrees) :=
+ block([coef:polynomial],
+       for i from 1 thru length(degrees)
+        do block([degree:degrees[i]],
+	         coef:ratcoef(coef, vars[i], degree)),
+	coef);
+
+trim_zeros(M) :=
+ block([accum:[]],
+       for j from 1 thru matrix_size(M)[2]
+        do if zeromatrixp(col(M,j))
+            then accum:cons(j, accum),
+       M:apply('submatrix, cons(M, accum)),
+       accum:[],
+       for i from 1 thru matrix_size(M)[1]
+        do if zeromatrixp(row(M,i))
+	    then accum:cons(i, accum),
+       apply('submatrix, append(accum, [M])));
+
+dp_to_matrix(dixonpoly, rowvars, colvars, max_degree) :=
+ block([vars:append(rowvars,colvars)],
+       block([degree_combinations:?degree_combinations(length(vars), max_degree)],
+	     block([dim:length(degree_combinations),
+	            M:apply('matrix, degree_combinations)],
+	           for i from 1 thru dim
+	            do for j from 1 thru dim
+	                do M[i,j]:coeffs(dixonpoly, vars, M[i,j]),
+	           full_rank_submatrix(trim_zeros(transpose(M))))));
+
+dixon_resultant(polynomials, vars) :=
+ block([dp:dixon_polynomial(polynomials, vars)],
+       block([poly:dp[1], new_vars:dp[3]],
+	     block([dixon_matrix:dp_to_matrix(poly, vars, new_vars, 4)],
+	          ratsimp(determinant(dixon_matrix)))));
+
+			
