@@ -98,10 +98,20 @@ dp_to_matrix(dixonpoly, rowvars, colvars, max_degree) :=
 	                do M[i,j]:coeffs(dixonpoly, vars, M[i,j]),
 	           full_rank_submatrix(trim_zeros(transpose(M))))));
 
-dixon_resultant(polynomials, vars) :=
+dixon_resultant(polynomials, vars, degree) :=
  block([dp:dixon_polynomial(polynomials, vars)],
        block([poly:dp[1], new_vars:dp[3]],
-	     block([dixon_matrix:dp_to_matrix(poly, vars, new_vars, 4)],
+	     block([dixon_matrix:dp_to_matrix(poly, vars, new_vars, degree^2)],
 	          ratsimp(determinant(dixon_matrix)))));
 
-			
+"https://sci-hub.se/10.1007/978-3-319-56932-1_19"
+"Computing the Dixon Resultant with the Maple Package DR"
+f0:-x1^3+3*x1*x2^2+3*x1-3*p1;
+f1:-3*x1^2*x2+x2^3-3*x2-3*p2;
+f2:x1^2-x2^2-p3;
+dixon_resultant([f0,f1,f2], [x1,x2], 2);
+
+XA:Ax1*s^3*t^3+Bx1*s^2*t^3+Cx1*s*t^3+Dx1*t^3+Ex1*s^3*t^2+Fx1*s^2*t^2+Gx1*s*t^2+Hx1*t^2+Ix1*s^3*t+Jx1*s^2*t+Kx1*s*t+Lx1*t+Mx1*s^3+Nx1*s^2+Ox1*s+Px1;
+YA:Ay1*s^3*t^3+By1*s^2*t^3+Cy1*s*t^3+Dy1*t^3+Ey1*s^3*t^2+Fy1*s^2*t^2+Gy1*s*t^2+Hy1*t^2+Iy1*s^3*t+Jy1*s^2*t+Ky1*s*t+Ly1*t+My1*s^3+Ny1*s^2+Oy1*s+Py1;
+ZA:Az1*s^3*t^3+Bz1*s^2*t^3+Cz1*s*t^3+Dz1*t^3+Ez1*s^3*t^2+Fz1*s^2*t^2+Gz1*s*t^2+Hz1*t^2+Iz1*s^3*t+Jz1*s^2*t+Kz1*s*t+Lz1*t+Mz1*s^3+Nz1*s^2+Oz1*s+Pz1;
+WA:Aw1*s^3*t^3+Bw1*s^2*t^3+Cw1*s*t^3+Dw1*t^3+Ew1*s^3*t^2+Fw1*s^2*t^2+Gw1*s*t^2+Hw1*t^2+Iw1*s^3*t+Jw1*s^2*t+Kw1*s*t+Lw1*t+Mw1*s^3+Nw1*s^2+Ow1*s+Pw1;
