@@ -1,5 +1,6 @@
 (in-package :direct)
 
+
 (cl:defclass dml-class (standard-class) ())
 
 (defmethod validate-superclass ((c1 dml-class) (c2 standard-class))
@@ -33,10 +34,18 @@
   ())
 
 
+
 (defun compute-getter-emfun (dslotds)
   (when dslotds
     (let ((attribute-method-function (slot-value (car dslotds) 'getter)))
       (when attribute-method-function
+	(unless (functionp attribute-method-function)
+	  (let ((fn (compile nil `(lambda (self)
+				    ,@attribute-method-function))))
+	    (setq attribute-method-function
+		  (setf (slot-value (car dslotds) 'getter)
+			#'(lambda (next-emfun object)
+			    (funcall fn object))))))
 	(let ((next-emfun (compute-getter-emfun (cdr dslotds))))
 	  #'(lambda (object)
 	      (funcall attribute-method-function next-emfun object)))))))
@@ -45,16 +54,25 @@
   (when dslotds
     (let ((attribute-method-function (slot-value (car dslotds) 'setter)))
       (when attribute-method-function
+	(unless (functionp attribute-method-function)
+	  (let ((fn (compile nil `(lambda (self value)
+				    ,@attribute-method-function))))
+	    (setq attribute-method-function
+		  (setf (slot-value (car dslotds) 'setter)
+			#'(lambda (next-emfun object value)
+			    (funcall fn object value))))))
 	(let ((next-emfun (compute-setter-emfun (cdr dslotds))))
 	  #'(lambda (object value)
 	      (funcall attribute-method-function next-emfun object value)))))))
 
+
 (defmethod adhoc::upgrade-eslotd ((eslotd effective-virtual-slot-definition-mixin)
 			   (dslotd direct-virtual-slot-definition-mixin)
-			   &rest dslotds)
+				  &rest dslotds)
   (setf (slot-value eslotd 'getter) (compute-getter-emfun dslotds))
   (setf (slot-value eslotd 'setter) (compute-setter-emfun dslotds))
   eslotd)
+
 
 (defmethod direct-slot-definition-class ((class dml-class) &rest initargs)
   (case (getf initargs :slot-class)
@@ -114,7 +132,7 @@
 		     (cdr (assoc :default-initargs body)))))
     (ensure-class name :metaclass metaclass ;; ensure type
 		       :direct-superclasses supers)
-    `(progn
+    `(let ((old (find-class ',name nil)))
        (ensure-class ',name ;; define class
 		     :metaclass ',metaclass
 		     :direct-superclasses '(,@supers)
@@ -123,6 +141,7 @@
 							    collect `(list ',initarg ',expression
 									   (lambda ()
 									     ,expression)))))
+       (when old (make-instances-obsolete old))
        #+sbcl(sb-pcl::update-class (find-class ',name) t)
        #+ccl(let ((ccl::*update-slots-preserve-existing-wrapper* t))
 	      (ccl::update-class adhoc-class t))
@@ -135,4 +154,3 @@
       :setter (named-lambda (:setter a) (self value) 13)))
   (:metaclass dml-class))
 
-      

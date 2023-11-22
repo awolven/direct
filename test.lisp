@@ -1,6 +1,5 @@
 (in-package :direct)
 
-(eval-when (:execute)
 (defparameter *nurbs-circle*
   (make-instance 'b-spline-space-curve
 		 :control-points
@@ -78,7 +77,7 @@
 
 (defparameter *power-2*
   (first (power-basis *cubic-2*)))
-)
+
 
 
 		    
