@@ -34,37 +34,58 @@
   ())
 
 
+(defmacro with-getter-cnm-support (function)
+  (let ((next-method-arg (gensym "NEXT-METHOD"))
+	(self-arg (gensym "SELF-")))
+    `(lambda (,next-method-arg ,self-arg)
+      (declare (ignorable ,next-method-arg))
+      (flet ((next-method-p ()
+	       (not (null ,next-method-arg))))
+	(declare (ignorable (function next-method-p)))
+	(flet ((call-next-method ()
+		 (if (next-method-p)
+		     (funcall ,next-method-arg ,self-arg)
+		     (error "No next getter method for the attribute."))))
+	  (declare (ignorable (function call-next-method)))
+	  (funcall ,function ,self-arg))))))
+
+(defmacro with-setter-cnm-support (function)
+  (let ((next-method-arg (gensym "NEXT-METHOD"))
+	(self-arg (gensym "SELF-"))
+	(value-arg (gensym "VALUE-")))
+    `(lambda (,next-method-arg ,self-arg ,value-arg)
+       (declare (ignorable ,next-method-arg))
+       (flet ((next-method-p ()
+		(not (null ,next-method-arg))))
+	 (declare (ignorable (function next-method-p)))
+	 (flet ((call-next-method ()
+		  (if (next-method-p)
+		      (funcall ,next-method-arg ,self-arg ,value-arg)
+		      (error "No next setter method for the attribute."))))
+	   (declare (ignorable (function call-next-method)))
+	   (funcall ,function ,self-arg ,value-arg))))))
+
+(defun compute-getter-emfun-1 (dslotd)
+  (let ((getter (slot-value dslotd 'getter)))
+    (with-getter-cnm-support getter)))
+
+(defun compute-setter-emfun-1 (dslotd)
+  (let ((setter (slot-value dslotd 'setter)))
+    (with-setter-cnm-support setter)))
 
 (defun compute-getter-emfun (dslotds)
   (when dslotds
-    (let ((attribute-method-function (slot-value (car dslotds) 'getter)))
-      (when attribute-method-function
-	(unless (functionp attribute-method-function)
-	  (let ((fn (compile nil `(lambda (self)
-				    ,@attribute-method-function))))
-	    (setq attribute-method-function
-		  (setf (slot-value (car dslotds) 'getter)
-			#'(lambda (next-emfun object)
-			    (funcall fn object))))))
-	(let ((next-emfun (compute-getter-emfun (cdr dslotds))))
-	  #'(lambda (object)
-	      (funcall attribute-method-function next-emfun object)))))))
+    (let ((next-emfun (compute-getter-emfun (cdr dslotds)))
+	  (this-emfun (compute-getter-emfun-1 (car dslotds))))
+      #'(lambda (object)
+	  (funcall this-emfun next-emfun object)))))
 
 (defun compute-setter-emfun (dslotds)
   (when dslotds
-    (let ((attribute-method-function (slot-value (car dslotds) 'setter)))
-      (when attribute-method-function
-	(unless (functionp attribute-method-function)
-	  (let ((fn (compile nil `(lambda (self value)
-				    ,@attribute-method-function))))
-	    (setq attribute-method-function
-		  (setf (slot-value (car dslotds) 'setter)
-			#'(lambda (next-emfun object value)
-			    (funcall fn object value))))))
-	(let ((next-emfun (compute-setter-emfun (cdr dslotds))))
-	  #'(lambda (object value)
-	      (funcall attribute-method-function next-emfun object value)))))))
-
+    (let ((next-emfun (compute-setter-emfun (cdr dslotds)))
+	  (this-emfun (compute-setter-emfun-1 (car dslotds))))
+      #'(lambda (object value)
+	  (funcall this-emfun next-emfun object value)))))
 
 (defmethod adhoc::upgrade-eslotd ((eslotd effective-virtual-slot-definition-mixin)
 			   (dslotd direct-virtual-slot-definition-mixin)
@@ -108,20 +129,6 @@
 				    (slotd effective-ordinary-virtual-slot-definition))
   t)
 
-
-#+NIL
-(defmethod finalize-inheritance :after ((class dml-class))
-  (let ((eslotds (class-slots class)))
-    (loop for slotd in eslotds
-	  when (typep slotd 'virtual-slot-definition-mixin)
-	    do (unless (functionp (slot-value slotd 'getter))
-		 (setf (slot-value slotd 'getter)
-		       (compile nil (slot-value slotd 'getter))))
-	       (unless (functionp (slot-value slotd 'setter))
-		 (setf (slot-value slotd 'setter)
-		       (compile nil (slot-value slotd 'setter)))))
-    (values)))
-	       
 (defmacro direct::defclass (name supers slots &body body)
   (let* ((adhoc::*slots-table* (make-hash-table))
 	 (slots (adhoc::parse-slots-section name slots))
