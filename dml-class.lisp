@@ -34,6 +34,7 @@
   ())
 
 
+#+NIL
 (defmacro with-getter-cnm-support (function)
   (let ((next-method-arg (gensym "NEXT-METHOD"))
 	(self-arg (gensym "SELF-")))
@@ -49,6 +50,7 @@
 	  (declare (ignorable (function call-next-method)))
 	  (funcall ,function ,self-arg))))))
 
+#+NIL
 (defmacro with-setter-cnm-support (function)
   (let ((next-method-arg (gensym "NEXT-METHOD"))
 	(self-arg (gensym "SELF-"))
@@ -65,10 +67,12 @@
 	   (declare (ignorable (function call-next-method)))
 	   (funcall ,function ,self-arg ,value-arg))))))
 
+#+NIL
 (defun compute-getter-emfun-1 (dslotd)
   (let ((getter (slot-value dslotd 'getter)))
     (with-getter-cnm-support getter)))
 
+#+NIL
 (defun compute-setter-emfun-1 (dslotd)
   (let ((setter (slot-value dslotd 'setter)))
     (with-setter-cnm-support setter)))
@@ -76,14 +80,14 @@
 (defun compute-getter-emfun (dslotds)
   (when dslotds
     (let ((next-emfun (compute-getter-emfun (cdr dslotds)))
-	  (this-emfun (compute-getter-emfun-1 (car dslotds))))
+	  (this-emfun (slot-value (car dslotds) 'getter)))
       #'(lambda (object)
 	  (funcall this-emfun next-emfun object)))))
 
 (defun compute-setter-emfun (dslotds)
   (when dslotds
     (let ((next-emfun (compute-setter-emfun (cdr dslotds)))
-	  (this-emfun (compute-setter-emfun-1 (car dslotds))))
+	  (this-emfun (slot-value (car dslotds) 'setter)))
       #'(lambda (object value)
 	  (funcall this-emfun next-emfun object value)))))
 
