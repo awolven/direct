@@ -70,6 +70,12 @@
 		       (vec2 -43.61 31.9499)
 		       (vec2 -27.9315 19.9605))
 		 :knot-vector (list 0 0 0 1 1 1)))
+
+(defparameter *bezier-1*
+  (first (decompose-curve *cubic-1*)))
+
+(defparameter *bezier-2*
+  (first (decompose-curve *cubic-2*)))
 		       
 
 (defparameter *power-1*

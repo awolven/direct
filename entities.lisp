@@ -192,241 +192,20 @@
 		 :getter ((let ((location (the location))) (make-bounding-box location location)))
 		 :setter ((setter-error 'bounding-box self)))))
 
-(defclass intersection-mixin ()
-  ((empty? :slot-class :virtual
-	   :getter (t)
-	   :setter ())))
+
 
 ;; RPP => rational polynomial parametric
 ;; PP  => procedural parametric
 ;; IA  => implicit algebraic
 ;; IP  => implicit procedural
 
-(defclass point/point-intersection (intersection-mixin)
-  ((point1)
-   (point2)
-
-   (epsilon)
-
-   (empty? :slot-class :virtual
-	   :getter ((> (distance (the point1) (the point2)) (the epsilon)))
-	   :setter ((setter-error 'empty? self)))))
-
-(defclass point/curve-intersection-mixin (intersection-mixin)
-  ((point)
-   (curve)))
-
-(defclass point/IA-curve-intersection (point/curve-intersection-mixin)
-  ())
-
-(defclass point/RPP-curve-intersection (point/curve-intersection-mixin)
-  ())
-
-(defclass point/PP-curve-intersection (point/curve-intersection-mixin)
-  ())
-
-(defclass point/surface-intersection-mixin (intersection-mixin)
-  ((point)
-   (surface)))
-
-(defclass point/IA-surface-intersection (point/surface-intersection-mixin)
-  ())
-
-(defclass point/RPP-surface-intersection (point/surface-intersection-mixin)
-  ())
-
-(defclass point/PP-surface-intersection (point/surface-intersection-mixin)
-  ())
-
-(defclass curve/curve-intersection-mixin (intersection-mixin)
-  ((curve1)
-   (curve2)))
-
-(defclass RPP-curve/IA-curve-intersection-mixin (curve/curve-intersection-mixin)
-  ((roots :slot-class :virtual
-	  :getter ()
-	  :setter ())
-
-   (empty? :slot-class :virtual
-	   :getter ((not (the roots)))
-	   :setter ((setter-error 'empty? self)))
-   
-   (points :slot-class :virtual
-	   :getter ((let ((RPP-curve (the curve1)))
-		      (mapcar #'(lambda (root) (evaluate1 RPP-curve root)) (the roots))))
-	   :setter ())))
-
-(defclass planar-RPP-curve/IA-curve-intersection (RPP-curve/IA-curve-intersection-mixin)
-  ())
-
-(defclass space-RPP-curve/IA-curve-intersection (RPP-curve/IA-curve-intersection-mixin)
-  ())
-
-(defclass RPP-curve/RPP-curve-intersection (curve/curve-intersection-mixin)
-  ((points :slot-class :virtual
-	   :getter ()
-	   :setter ())))
-
-(defclass RPP-curve/PP-curve-intersection (curve/curve-intersection-mixin)
-  ())
-
-(defclass RPP-curve/IP-curve-intersection (curve/curve-intersection-mixin)
-  ())
-
-(defclass PP-curve/PP-curve-intersection (curve/curve-intersection-mixin)
-  ())
-
-(defclass PP-curve/IA-curve-intersection (curve/curve-intersection-mixin)
-  ())
-
-(defclass PP-curve/IP-curve-intersection (curve/curve-intersection-mixin)
-  ())
-
-(defclass IA-curve/IA-curve-intersection (curve/curve-intersection-mixin)
-  ())
-
-(defclass IA-curve/IP-curve-intersection (curve/curve-intersection-mixin)
-  ())
-
-(defclass IP-curve/IP-curve-intersection (curve/curve-intersection-mixin)
-  ())
-
-(defclass curve/surface-intersection-mixin (intersection-mixin)
-  ((curve)
-   (surface)))
-
-(defclass RPP-curve/IA-surface-intersection (curve/surface-intersection-mixin)
-  ((roots :slot-class :virtual
-	  :getter ()
-	  :setter ())
-   
-   (points :slot-class :virtual
-	   :getter ((let ((RPP-curve (the curve1)))
-		      (mapcar #'(lambda (root) (evaluate1 RPP-curve root)) (the roots))))
-	   :setter ())))
-
-(defclass RPP-curve/RPP-surface-intersection (curve/surface-intersection-mixin)
-  ((points :slot-class :virtual
-	   :getter ()
-	   :setter ())))
-
-(defclass RPP-curve/PP-surface-intersection (curve/surface-intersection-mixin)
-  ())
-
-(defclass RPP-curve/IP-surface-intersection (curve/surface-intersection-mixin)
-  ())
-
-(defclass PP-curve/PP-surface-intersection (curve/surface-intersection-mixin)
-  ())
-
-(defclass PP-curve/IA-surface-intersection (curve/surface-intersection-mixin)
-  ())
-
-(defclass PP-curve/IP-surface-intersection (curve/surface-intersection-mixin)
-  ())
-
-
-(defclass IA-curve/IA-surface-intersection (curve/surface-intersection-mixin)
-  ())
-
-(defclass IA-curve/RPP-surface-intersection (curve/surface-intersection-mixin)
-  ())
-
-(defclass IA-curve/IP-surface-intersection (curve/surface-intersection-mixin)
-  ())
-
-(defclass IP-curve/RPP-surface-intersection (curve/surface-intersection-mixin)
-  ())
-
-(defclass IP-curve/PP-surface-intersection (curve/surface-intersection-mixin)
-  ())
-
-(defclass IP-curve/IA-surface-intersection (curve/surface-intersection-mixin)
-  ())
-
-(defclass IP-curve/IP-surface-intersection (curve/surface-intersection-mixin)
-  ())
-
-(defclass surface/surface-intersection-mixin (intersection-mixin)
-  ((surface1)
-   (surface2)))
-
-(defclass RPP-surface/IA-surface-intersection (surface/surface-intersection-mixin)
-  ())
-
-(defclass RPP-surface/RPP-surface-intersection (surface/surface-intersection-mixin)
-  ())
-
-(defclass RPP-surface/PP-surface-intersection (surface/surface-intersection-mixin)
-  ())
-
-(defclass RPP-surface/IP-surface-intersection (surface/surface-intersection-mixin)
-  ())
-
-(defclass PP-surface/PP-surface-intersection (surface/surface-intersection-mixin)
-  ())
-
-(defclass PP-surface/IP-surface-intersection (surface/surface-intersection-mixin)
-  ())
-
-(defclass IA-surface/IA-surface-intersecion (surface/surface-intersection-mixin)
-  ())
-
-(defclass IA-surface/IP-surface-intersecion (surface/surface-intersection-mixin)
-  ())
-
-(defclass IP-surface/IP-surface-intersecion (surface/surface-intersection-mixin)
-  ())
 
 
   
 
 (defclass offset-mixin () ())
 
-(defclass intersection-of-two-procedural-curves-mixin (intersection-mixin point-mixin)
-  ((curve-1)
-   (curve-2)))
 
-(defun intersection-of-RPP-curve-and-IA-curve-case-d3 (explicit-curve implicit-curve)
-  (declare (ignorable explicit-curve implicit-curve))
-  (values))
-
-(defun intersection-of-two-RPP-curves-case-d1 (curve1 curve2)
-  (declare (ignorable curve1 curve2))
-  (values))
-
-(defun intersection-of-RPP-curve-and-PP-curve-case-d2 (rational-polynomial-curve procedural-curve)
-  (declare (ignorable rational-polynomial-curve procedural-curve))
-  (values))
-
-(defun intersection-of-two-PP-curves-case-d5 (curve1 curve2)
-  (declare (ignorable curve1 curve2))
-  (values))
-
-(defun intersection-of-PP-curve-and-IA-curve-case-d6 (procedural-curve implicit-curve)
-  (declare (ignorable procedural-curve implicit-curve))
-  (values))
-
-(defun intersection-of-two-IA-curves-case-d8 (curve1 curve2)
-  (declare (ignorable curve1 curve2))
-  (values))
-
-(defclass intersection-of-procedural-curve-and-procedural-surface-mixin (intersection-mixin point-mixin)
-  ((curve)
-   (surface)))
-
-(defun intersection-of-RPP-curve-and-IA-surface-case-e3 (curve surface)
-  (declare (ignorable curve surface))
-  (values))
-
-(defgeneric intersection2 (thing1 thing2))
-
-(defgeneric intersection3 (thing1 thing2 thing3))
-
-(defclass intersection-of-three-implicit-surfaces-mixin (intersection-mixin point-mixin)
-  ((surface-1)
-   (surface-2)
-   (surface-3)))
 
 (defclass placement-mixin (geometry-mixin)
   ())
@@ -2466,7 +2245,14 @@
 		     (intersection-planar-rational-quadratic-bezier/planar-rational-quadratic-bezier-1
 		      bezier-a bezier-b)))
 	       (mapcar #'(lambda (root)
-			   (evaluate1 bezier-b root)) roots)))))))
+			   (evaluate1 bezier-b root)) roots)))
+	    ((and (= deg-a 3) (= deg-b 3))
+	     (let* ((power-basis-a (bezier-curve-to-power-basis bezier-a))
+		    (power-basis-b (bezier-curve-to-power-basis bezier-b))
+		    (roots (intersection-planar-rational-cubic-power-basis-curve/planar-rational-cubic-power-basis-curve-1
+			    power-basis-a power-basis-b)))
+	       (mapcar #'(lambda (root)
+			   (evaluate1 power-basis-b root)) roots)))))))
   
 	 
 	      
@@ -2838,7 +2624,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 
 (defmethod evaluate1 ((self rational-power-basis-plane-curve) (parameter real) &key (derivs 0))
   (let ((domain (the domain)))
-    (assert (<= (first domain) parameter (second domain)))
+    ;;(assert (<= (first domain) parameter (second domain)))
     (let* ((wxpoly (the wx-polynomial))
 	   (wypoly (the wy-polynomial))
 	   (wpoly (the w-polynomial))
@@ -3373,6 +3159,32 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 				 :wy-polynomial (the-col matrix 1)
 				 :w-polynomial (the-col matrix 2)
 				 :domain (list (elt span 0) (elt span 1))))))))))
+
+(defun bezier-curve-to-power-basis (bezier-curve)
+  (let* ((cpoints (send bezier-curve homogeneous-control-points))
+	 (points (make-array (list (length cpoints) 3)
+			     :element-type 'number :initial-element 0.0d0)))
+    (loop for i from 0 below (length cpoints)
+	  do (let ((cpoint (aref cpoints i)))
+	       (setf (aref points i 0) (vx cpoint)
+		     (aref points i 1) (vy cpoint)
+		     (aref points i 2) (vz cpoint))))
+    (let* ((domain (send bezier-curve domain))
+	   (R (reparameterization-matrix (1- (length cpoints)) (elt domain 0) (elt domain 1)))
+	   (M (bezier-to-power-basis-matrix (1- (length cpoints)))))
+      (flet ((the-col (matrix i)
+	       (let ((vector (make-array (length cpoints))))
+		 (loop for k from 0 below (length cpoints)
+		       do (setf (aref vector k) (aref matrix k i)))
+		 vector)))
+	(let ((matrix (m* R M points)))
+	  (make-instance 'rational-power-basis-plane-curve
+			 :wx-polynomial (the-col matrix 0)
+			 :wy-polynomial (the-col matrix 1)
+			 :w-polynomial (the-col matrix 2)
+			 :domain domain))))))
+    
+  
     
 			
 
@@ -4018,69 +3830,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 
   
 
-#+NIL
-(unless (boundp '*global-coordinate-system*)
-(setq *global-coordinate-system* (make-instance 'global-coordinate-system))
 
-(setq *global-origin* (make-instance 'point :x 0.0d0 :y 0.0d0 :z 0.0d0 :coordinate-system *global-coordinate-system*))
-
-(setq *coordinate-system* *global-coordinate-system*)
-
-(setq *xy-plane* (make-instance 'plane
-				:origin (vec3 0 0 0)
-				:normal (vec3 0 0 1)))
-
-(setq *yz-plane* (make-instance 'plane
-				:origin (vec3 0 0 0)
-				:normal (vec3 1 0 0)))
-
-(setq *zx-plane* (make-instance 'plane
-				:origin (vec3 0 0 0)
-				:normal (vec3 0 1 0)))
-
-(setq *sketch-plane* *xy-plane*)
-
-
-
-
-
-(defparameter *nurbs-circle*
-  (make-instance 'b-spline-space-curve
-		 :control-points
-		 (list (vec3 1 0 0)
-		       (vec3 1 2 0)
-		       (vec3 -1 2 0)
-		       (vec3 -1 0 0)
-		       (vec3 -1 -2 0)
-		       (vec3 1 -2 0)
-		       (vec3 1 0 0))
-		 :weights (list 1 1/3 1/3 1 1/3 1/3 1)
-		 :knot-vector (list 0 0 0 0 1/2 1/2 1/2 1 1 1 1)))
-
-
-(defparameter *nurbs-circle2*
-  (make-instance 'b-spline-plane-curve
-		 :control-points
-		 (list (vec2 1 0)
-		       (vec2 1 2)
-		       (vec2 -1 2)
-		       (vec2 -1 0)
-		       (vec2 -1 -2)
-		       (vec2 1 -2)
-		       (vec2 1 0))
-		 :weights (list 1 1/3 1/3 1 1/3 1/3 1)
-		 :knot-vector (list 0 0 0 0 1/2 1/2 1/2 1 1 1 1)))
-
-
-(defparameter *nurbs-cylinder*
-  (swept-surface (make-nurbs-line (vec3 0 0 0) (vec3 0 0 1))
-		 *nurbs-circle*))
-
-
-(defparameter *nurbs-line*
-  (make-nurbs-line2 (vec2 -3 -3) (vec2 3 3)))
-
-)
 
 (defun intersection-planar-rational-cubic-power-basis-curve/planar-rational-cubic-power-basis-curve-1
     (curve-1 curve-2)
