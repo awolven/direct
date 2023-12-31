@@ -1002,9 +1002,6 @@
 	     :getter ((or (the %linetype) (and (the layer) (the layer linetype?))))
 	     :setter ((setf (the %linetype) value)))))
 
-(defclass intersection-of-two-implicit-surfaces (intersection-mixin curve-mixin)
-  ((surface-1)
-   (surface-2)))
 
 (defclass offset-curve (offset-mixin curve-mixin)
   ((basis-curve)))
