@@ -1,5 +1,19 @@
 (in-package :direct)
 
+(defconstant +epsilon+ 1.0d-8)
+
+(defun within-tolerance (a val &optional (tol +epsilon+))
+  (<= (abs (- a val)) tol))
+
+(defun v-within-tolerance (a val &optional (tol +epsilon+))
+  (if (typep a 'vec2)
+      (and (<= (abs (- (vx a) (vx val))) tol)
+	   (<= (abs (- (vy a) (vy val))) tol))
+      (and (<= (abs (- (vx a) (vx val))) tol)
+	   (<= (abs (- (vy a) (vy val))) tol)
+	   (<= (abs (- (vz a) (vz val))) tol))))
+       
+
 (defconstant 2pi #.(* pi 2.0d0))
 
 (defconstant pi/2 #.(/ pi 2.0d0))
@@ -65,9 +79,9 @@
 
 (defclass graphical-mixin ()
   ;; these objects are objects with drawable representation
-  ((krma.gui::object-id :initform (krma.gui::new-object-id))
+  ((climish::object-id :initform (climish::new-object-id))
    (%group-id :initform nil)
-   (%prim-ids :initform nil)
+   (climish::primitive-handles :initform nil)
    
    (%hidden? :initform nil
 	     :type boolean)
@@ -93,7 +107,7 @@
 	  :setter ((setf (the %color) value)))))
 
 (defun %copy-graphical-slots (from to)
-  (setf (send to krma.gui::object-id) (krma.gui::new-object-id))
+  (setf (send to climish::object-id) (climish::new-object-id))
   (setf (send to %hidden?) (send from %hidden?)
 	(send to %color)  (send from %color)
 	(send to  layer)  (send from  layer))
@@ -660,7 +674,7 @@
 
 (defmethod delete-entity ((coord-sys coordinate-system-mixin) entity)
   (declare (type coordinate-system-mixin coord-sys))
-  (krma.gui::forget-object coord-sys)
+  (climish::forget-object coord-sys)
   (let ((entities (slot-value coord-sys '%entities)))
     (remhash entity entities)
     t))
@@ -833,11 +847,15 @@
   (prog1 (call-next-method)
     (setf (send entity plane) nil)))
 
-(defmethod transform ((coord vec2) (xform plane))
-  (safe-euclid (m* (send xform matrix) (vec4 (vx coord) (vy coord) 0 1))))
+;;(defmethod transform ((coord vec2) (xform plane))
+  ;;(safe-euclid (m* (send xform matrix) (vec4 (vx coord) (vy coord) 0 1))))
 
 (defmethod transform ((coord vec3) (xform plane))
-  (safe-euclid (m* (send xform matrix) (vec4 (vx coord) (vy coord) (vz coord) 1))))
+  (let ((vec3 (safe-euclid (m* (send xform matrix) (vec4 (vx coord) (vy coord) (vz coord) 1)))))
+    (vec2 (vx vec3) (vy vec3))))
+
+(defmethod untransform ((coord vec2) (xform plane))
+  (safe-euclid (m* (minv (send xform matrix)) (vec4 (vx coord) (vy coord) 0 1))))
 
 (defmethod print-object ((self plane) stream)
   (print-unreadable-object (self stream :type t :identity t)
@@ -1143,6 +1161,20 @@
 	      :setter ((setq value (vunit value))
 		       (setf (the span) (v* (vlength (cl:the vec3 (the span))) (cl:the vec3 value)))))))
 
+(defmethod draw ((self line))
+  (let* ((start (the start))
+	 (end (the end)))
+    (push (krma::medium-add-filled-3d-instanced-tube-primitive
+	   (krma::default-medium) :default nil nil 3.0f0 #xff (list (vx start) (vy start) (vz start)
+								    (vx end) (vy end) (vz end))
+	   (the climish::object-id))
+	  (the climish::primitive-handles))
+    (setf (krma::object-from-id (the climish::object-id)) self)
+    (values)))
+
+
+
+
 (defmethod evaluate1 ((self line) (parameter real) &key (derivs 0))
   (v+ (the start) (v* parameter (the span))))
 
@@ -1250,7 +1282,24 @@
 			   (vec2 0 0)
 			   (vunit (cl:the vec2 (the span)))))
 	      :setter ((setq value (vunit value))
-		       (setf (the span) (v* (vlength (cl:the vec2 (the span))) (cl:the vec2 value)))))))
+		       (setf (the span) (v* (vlength (cl:the vec2 (the span))) (cl:the vec2 value)))))
+
+   (axis1-placement :slot-class :virtual
+		    :type axis1-placement
+		    :getter ((let ((origin (untransform (the start) (the coordinate-system)))
+				   (axis (untransform (the direction) (the coordinate-system))))
+			       (make-instance 'axis1-placement :origin origin :axis axis))))))
+
+(defmethod draw ((self 2d-line))
+  (let* ((start (untransform (the start) (the coordinate-system)))
+	 (end (untransform (the end) (the coordinate-system))))
+    (push (krma::medium-add-filled-3d-instanced-tube-primitive
+	   (krma::default-medium) :default nil nil 3.0f0 #xff (list (vx start) (vy start) (vz start)
+								    (vx end) (vy end) (vz end))
+	   (the climish::object-id))
+	  (the climish::primitive-handles))
+    (setf (krma::object-from-id (the climish::object-id)) self)
+    (values)))
 
 (defmethod evaluate1 ((self 2d-line) (parameter real) &key (derivs 0))
   (v+ (the start) (v* parameter (the span))))
@@ -2345,6 +2394,10 @@
 			       (the start-v) (vy value))
 			 (values)))
 
+   (start :slot-class :virtual
+	  :type vec2
+	  :getter ((the start-point)))
+
    (end-point :slot-class :virtual
 	      :type vec2
 	      :getter ((vec2 (the end-u) (the end-v)))
@@ -2352,6 +2405,10 @@
 		       (setf (the end-u) (vx value)
 			     (the end-v) (vy value))
 		       (values)))
+
+   (end :slot-class :virtual
+	:type vec2
+	:getter ((the end-point)))
 
    (%center-to-start :slot-class :virtual
 		     :type vec2
@@ -2431,8 +2488,33 @@
 				(coord-y (+ (vy center) (* radius (sin angle))))
 				(coord (safe-euclid (m* matrix (vec4 coord-x coord-y 0.0d0 1.0d0)))))
 			   (list (krma::clampf (vx coord)) (krma::clampf (vy coord)) (krma::clampf (vz coord)))))))
-      (krma::add-3d-polyline vertices :color (or (the color) #x000000ff) :closed? nil :object-id (the krma.gui::object-id))
+      (push (krma::medium-add-filled-3d-instanced-tube-primitive (krma::default-medium) :default nil nil 3.0f0 #xff vertices (the climish::object-id))
+	    (the climish::primitive-handles))
+      (setf (krma::object-from-id (the climish::object-id)) self)
       (values))))
+
+(defmethod evaluate1 ((self arc) (parameter real) &key (derivs 0))
+  (let ((c (cos parameter))
+	(s (sin parameter)))
+    (case derivs
+      (0 (v+ (the center) (v* (the radius) (vec2 c s))))
+      (otherwise (values (v+ (the center) (v* (the radius) (vec2 c s))) (vec2 (- s) c))))))
+
+(defmethod clim:handle-event ((self graphical-mixin) (event clim:pointer-enter-event))
+  (let ()
+    (flet ((chcol ()
+	     (let ((handles (the climish::primitive-handles)))
+	       (loop for handle in handles
+		     do (krma::primitive-set-color (krma:default-medium) handle #xff0000ff))
+	       (values))))
+      (chcol))))
+
+(defmethod clim:handle-event ((self graphical-mixin) (event clim:pointer-exit-event))
+  (let ((handles (the climish::primitive-handles)))
+    (loop for handle in handles
+	  do (krma::primitive-set-color (krma:default-medium) handle
+					(krma::canonicalize-color (or (the color) #xff))))
+    (values)))
 
 (defclass object-snap-mixin ()
   ((object)
@@ -2618,6 +2700,8 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
    (wy-polynomial :initarg :wy-polynomial)
    (w-polynomial :initarg :w-polynomial)
    (domain :initarg :domain)))
+
+
 
 (defmethod evaluate1 ((self rational-power-basis-plane-curve) (parameter real) &key (derivs 0))
   (let ((domain (the domain)))
@@ -2832,18 +2916,18 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
   (let* ((n (the degree)))
     (declare (type fixnum n))
     (let* ((B (bernstein n parameter))
-	   (C (3dm.d::%vec3 0.0d0 0.0d0 0.0d0))
-	   (P (the control-points)))
+	   (Cw (3dm.d::%vec4 0.0d0 0.0d0 0.0d0 0.0d0))
+	   (P (the homogeneous-control-points)))
       (loop for k from 0 to n
-	    do (setq C (v+ (cl:the vec3 C) (v* (cl:the double-float (aref B k)) (cl:the vec3 (elt P k)))))
-	    finally (return C)))))
+	    do (setq Cw (v+ (cl:the vec4 Cw) (v* (cl:the double-float (aref B k)) (cl:the vec4 (elt P k)))))
+	    finally (return (safe-euclid Cw))))))
 
 
 (defclass b-spline-mixin ()
   ((homogeneous-control-points :type simple-array
 			       :initarg :%homogeneous-control-points)))
 
-(defclass b-spline-curve-mixin (b-spline-mixin parametric-curve-mixin)
+(defclass b-spline-curve-mixin (b-spline-mixin parametric-curve-mixin curve-mixin)
   ((degree :slot-class :virtual
 	   :type fixnum
 	   :getter (;; m = n + p + 1
@@ -2910,7 +2994,12 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 		             (apply #'= (let ((m (1- (length kv))))
 			                  (loop for i from 0 below order
 						collect (elt kv (- m i))))))))
-	     :setter ())))
+	     :setter ())
+   (start :slot-class :virtual
+	  :getter ((evaluate1 self (first (the domain)))))
+   
+   (end :slot-class :virtual
+	:getter ((evaluate1 self (second (the domain)))))))
 
 (defgeneric insert-knot (b-spline-curve knot i))
 
@@ -2921,7 +3010,19 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 			 (not
 			  (loop for cpoint across hcpoints
 				always (= (vz cpoint) 1.0d0)))))
-	      :setter ((setter-error 'rational? self)))))
+	      :setter ((setter-error 'rational? self)))
+   
+   (control-points :slot-class :virtual
+		   :type cl:list
+		   :getter ((let ((hcpoints (the homogeneous-control-points)))
+			      (loop for cpoint across hcpoints
+				    collect (vec2 (vx cpoint) (vy cpoint))))))
+   
+   (weights :slot-class :virtual
+	    :type cl:list
+	    :getter ((let ((hcpoints (the homogeneous-control-points)))
+			      (loop for cpoint across hcpoints
+				    collect (vz cpoint)))))))
 
 (defmethod initialize-instance ((self b-spline-plane-curve) &rest initargs &key %homogeneous-control-points control-points weights knot-vector)
   (if %homogeneous-control-points
@@ -2962,6 +3063,28 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 		 :knot-vector knot-vector
 		 :degree p
 		 initargs)))))
+
+(defmethod draw ((self b-spline-plane-curve))
+  (let ((vertices (append
+		   (loop for i from 0 below 100
+			 with u0 = 0.0d0
+			 with u = u0
+			 with step = 0.01d0
+			 append (let ((vec3 (direct::untransform
+					     (evaluate1 self u)
+					     (the coordinate-system))))
+				  (setq u (+ u0 (* i step)))
+				  (list (vx vec3) (vy vec3) (vz vec3))))
+		   (let ((vec3 (direct::untransform
+				(evaluate1 self 1.0d0)
+				(the coordinate-system))))
+		     (list (vx vec3) (vy vec3) (vz vec3))))))
+    (push (krma::medium-add-filled-3d-instanced-tube-primitive
+	   (krma::default-medium) :default nil nil 3.0f0 #xff vertices
+	   (the climish::object-id))
+	  (the climish::primitive-handles))
+    (setf (krma::object-from-id (the climish::object-id)) self)
+    (values)))
 
 
 
@@ -3758,8 +3881,8 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 
     (print (apply #'max indices))
 
-    (let ((scene (krma::application-scene krma::*app*))
-	  (oid (the krma.gui::object-id))
+    (let ((scene (krma::frame-manager-default-medium clim:*default-frame-manager*))
+	  (oid (the climish::object-id))
 	  (color (krma::canonicalize-color (or (the color) #x00ffffff)))
 	  (group (or (the %group-id) :default)))
       (krma::rm-dispatch-to-render-thread-with-handle (scene draw-data handle)
