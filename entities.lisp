@@ -18,6 +18,10 @@
 
 (defconstant pi/2 #.(/ pi 2.0d0))
 
+(defconstant pi/3 #.(/ pi 3.0d0))
+
+(defconstant pi/4 #.(/ pi 4.0d0))
+
 (defvar *global-origin*)
 (defvar *global-coordinate-system*)
 (defvar *coordinate-system*)
@@ -79,9 +83,9 @@
 
 (defclass graphical-mixin ()
   ;; these objects are objects with drawable representation
-  ((climish::object-id :initform (climish::new-object-id))
+  ((climish:object-id :initform (climish::new-object-id))
    (%group-id :initform nil)
-   (climish::primitive-handles :initform nil)
+   (climish:primitive-handles :initform nil)
    
    (%hidden? :initform nil
 	     :type boolean)
