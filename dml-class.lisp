@@ -106,7 +106,7 @@
 
 (defmethod effective-slot-definition-class ((class dml-class) &rest initargs)
   (let* ((name (getf initargs :name))
-	 (dslotd (loop for c in (class-precedence-list class)
+	 (dslotd (loop for c in (compute-class-precedence-list class)
 		       do (let ((dslotd (find name (class-direct-slots c)
 					      :key #'slot-definition-name :test #'eq)))
 			    (when dslotd (return dslotd))))))
@@ -149,9 +149,12 @@
 		     :direct-superclasses '(,@supers)
 		     :direct-slots (list ,@slots)
 		     :direct-default-initargs (list ,@(loop for (initarg expression) on initargs by #'cddr
-							    collect `(list ',initarg ',expression
-									   (lambda ()
-									     ,expression)))))
+							    collect `(list ',initarg #-allegro ',expression
+										     #-allegro (lambda ()
+												 ,expression)
+										     #+allegro (lambda ()
+												 ,expression)
+										     #+allegro ',expression))))
        (when old (make-instances-obsolete old))
        #+sbcl(sb-pcl::update-class (find-class ',name) t)
        #+ccl(let ((ccl::*update-slots-preserve-existing-wrapper* t))

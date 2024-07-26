@@ -7,7 +7,9 @@
   :components
   ((:file "package")
    (:file "dml-class" :depends-on ("package"))
+   #+NOTYET
    (:file "intersection-rational-quadratic-beziers" :depends-on ("package"))
+   #+NOTYET
    (:module "intersection-rational-cubic-beziers"
     :depends-on ("package")
     :components (;;(:file "intersection-rational-cubic-beziers-c0")

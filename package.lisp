@@ -42,6 +42,7 @@
 	   #:*sketch-plane*
 
 	   #:entity-mixin
+	   #:draw
 	   #:linetype
 	   #:graphical-mixin
 	   #:pattern
@@ -116,6 +117,7 @@
 	   #:minor-axis
 	   #:eccentricity
 	   #:intersection
+	   #:offset
 	   #:quadratic-formula
 	   #:roots
 	   #:arc

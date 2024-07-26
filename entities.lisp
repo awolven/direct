@@ -2,9 +2,11 @@
 
 (defconstant +epsilon+ 1.0d-8)
 
+;; todo: move this to 3d-math
 (defun within-tolerance (a val &optional (tol +epsilon+))
   (<= (abs (- a val)) tol))
 
+;; todo: move this to 3d-math
 (defun v-within-tolerance (a val &optional (tol +epsilon+))
   (if (typep a 'vec2)
       (and (<= (abs (- (vx a) (vx val))) tol)
@@ -55,6 +57,9 @@
 	(values nil nil)
 	(values val t))))
 
+(defun layer (&rest initargs)
+  (apply #'make-instance 'layer initargs))
+
 (defclass layer (entity-mixin)
   ((name :initform nil
 	 :initarg :name
@@ -71,6 +76,9 @@
    (linetype :initform nil
 	     :initarg :linetype
 	     :initarg linetype)))
+
+(defun linetype (&rest initargs)
+  (apply #'make-instance 'linetype initargs))
 
 (defclass linetype (entity-mixin)
   ((name :initform nil
@@ -116,6 +124,9 @@
 	(send to %color)  (send from %color)
 	(send to  layer)  (send from  layer))
   (values))
+
+(defun bounding-box (&rest initargs)
+  (apply #'make-instance 'bounding-box initargs))
 
 (defclass bounding-box (graphical-mixin)
   ((hidden? :initform t
@@ -183,10 +194,6 @@
     (format stream "MIN: ~A, MAX: ~A" (the min) (the max))
     self))
 
-(defun make-bounding-box (min max)
-  (declare (type vec3 min max))
-  (make-instance 'bounding-box :min min :max max))
-
 (defclass geometry-mixin (graphical-mixin)
   ())
 
@@ -207,7 +214,7 @@
 (defclass point-mixin (geometry-mixin)
   ((bounding-box :slot-class :virtual
 		 :type bounding-box
-		 :getter ((let ((location (the location))) (make-bounding-box location location)))
+		 :getter ((let ((location (the location))) (bounding-box :min location :max location)))
 		 :setter ((setter-error 'bounding-box self)))))
 
 
@@ -252,6 +259,9 @@
   (declare (ignore initargs))
   (add-entity (the 3-space) self)
   (values))
+
+(defun axis1-placement (&rest initargs)
+  (apply #'make-instance 'axis1-placement initargs))
 
 (defclass axis1-placement (3d-mixin placement-mixin entity-mixin)
   ((origin-x :type double-float
@@ -337,6 +347,9 @@
   (add-entity (the coordinate-system) self)
   (values))
 
+(defun axis2-placement-2d (&rest initargs)
+  (apply #'make-instance 'axis2-placement-2d initargs))
+
 (defclass axis2-placement-2d (2d-mixin placement-mixin entity-mixin)
   ((origin-u :type double-float
 	     :initform 0.0d0)
@@ -381,6 +394,8 @@
 	  (send copy ref-direction-v) (the ref-direction-v))
     copy))
 
+(defun axis2-placement-3d (&rest initargs)
+  (apply #'make-instance 'axis2-placement-3d initargs))
 
 (defclass axis2-placement-3d (3d-mixin placement-mixin entity-mixin)
   ((origin-x :type double-float
@@ -574,6 +589,9 @@
 	   :getter (nil)
 	   :setter ((setter-error 'z-axis self)))))
 
+(defun 2-space (&rest initargs)
+  (apply #'make-instance '2-space initargs))
+
 (defclass 2-space (2d-mixin coordinate-system-mixin entity-mixin)
   ((placement :initarg :placement
 	      :initarg placement
@@ -685,7 +703,8 @@
 
 
 
-
+(defun 3-space (&rest initargs)
+  (apply #'make-instance '3-space initargs))
 
 (defclass 3-space (3d-mixin relative-3d-coordinate-system-mixin entity-mixin)
   ;; a 3-space is not a geometry mixin, but it's placement is
@@ -707,7 +726,8 @@
 
 (defclass parametric-surface-mixin (parametric-mixin surface-mixin) ())
 
-
+(defun plane (&rest initargs)
+  (apply #'make-instance 'plane initargs))
 
 (defclass plane (3d-mixin plane-mixin relative-3d-coordinate-system-mixin geometry-mixin entity-mixin)
   ((u-closed? :slot-class :virtual
@@ -952,6 +972,9 @@
 	   :getter ((the w))
 	   :setter ((setf (the w) (coerce value 'double-float))))))
 
+(defun point (&rest initargs)
+  (apply #'make-instance 'point initargs))
+
 (defclass point (3d-point-mixin entity-mixin)
   ())
 
@@ -1002,6 +1025,9 @@
       :type double-float
       :getter ((vy (cl:the vec3 (the location))))
       :setter ((setter-error 'z self)))))
+
+(defun 2d-point (&rest initargs)
+  (apply #'make-instance '2d-point initargs))
 
 (defclass 2d-point (2d-point-mixin entity-mixin)
   ())
@@ -1072,6 +1098,9 @@
 	   :type cl:list
 	   :getter ((list 0.0d0 1.0d0))
 	   :setter ((setter-error 'domain self)))))
+
+(defun line (&rest initargs)
+  (apply #'make-instance 'line initargs))
 
 (defclass line (space-curve-mixin line-mixin curve-mixin entity-mixin)
   ((start-x :type double-float
@@ -1165,12 +1194,14 @@
 	      :setter ((setq value (vunit value))
 		       (setf (the span) (v* (vlength (cl:the vec3 (the span))) (cl:the vec3 value)))))))
 
-(defmethod draw ((self line))
+(defgeneric draw (medium object &key))
+
+(defmethod draw ((medium krma:krma-essential-scene-mixin) (self line) &key)
   (let* ((start (the start))
 	 (end (the end)))
     (push (krma::medium-add-filled-3d-instanced-tube-primitive
-	   (krma::default-medium) :default nil nil 3.0f0 #xff (list (vx start) (vy start) (vz start)
-								    (vx end) (vy end) (vz end))
+	   medium :default nil nil 2.5f0 #xff (list (vx start) (vy start) (vz start)
+						    (vx end) (vy end) (vz end))
 	   (the climish::object-id))
 	  (the climish::primitive-handles))
     (setf (krma::object-from-id (the climish::object-id)) self)
@@ -1201,6 +1232,9 @@
   ;;(transform! (the tail) xform)
   ;;(transform! (the head) xform)
   (values))
+
+(defun 2d-line (&rest initargs)
+  (apply #'make-instance '2d-line initargs))
 
 (defclass 2d-line (plane-curve-mixin line-mixin curve-mixin entity-mixin)
   ((start-u :type double-float
@@ -1294,12 +1328,12 @@
 				   (axis (untransform (the direction) (the coordinate-system))))
 			       (make-instance 'axis1-placement :origin origin :axis axis))))))
 
-(defmethod draw ((self 2d-line))
+(defmethod draw ((medium krma:krma-essential-scene-mixin) (self 2d-line) &key)
   (let* ((start (untransform (the start) (the coordinate-system)))
 	 (end (untransform (the end) (the coordinate-system))))
     (push (krma::medium-add-filled-3d-instanced-tube-primitive
-	   (krma::default-medium) :default nil nil 3.0f0 #xff (list (vx start) (vy start) (vz start)
-								    (vx end) (vy end) (vz end))
+	   medium :default nil nil 2.5f0 #xff (list (vx start) (vy start) (vz start)
+						    (vx end) (vy end) (vz end))
 	   (the climish::object-id))
 	  (the climish::primitive-handles))
     (setf (krma::object-from-id (the climish::object-id)) self)
@@ -1321,6 +1355,13 @@
 	  (the end)   (m* mat (the end))))
   (values))
 
+(defmethod 2d-rotate ((self 2d-line) (angle real))
+  (setq angle (coerce angle 'double-float))
+  (let ((mat (mat2 (cos angle) (- (sin angle))
+		   (sin angle)    (cos angle))))
+    (2d-line :start (m* mat (the start))
+	     :end (m* mat (the end)))))
+
 (defmethod scale! ((self 2d-line) (scale vec2))
   (let ((mat (mat2 (vx scale) 0.0d0
 		   0.0d0 (vy scale))))
@@ -1335,6 +1376,9 @@
 
 (defclass conic-section-mixin (curve-mixin)
   ())
+
+(defun circle (&rest initargs)
+  (apply #'make-instance 'circle initargs))
 
 (defclass circle (2d-mixin conic-section-mixin entity-mixin)
   ((degenerate? :slot-class :virtual
@@ -1382,6 +1426,9 @@
 	     :initarg location
 	     :getter ((transform (the center) (the coordinate-system)))
 	     :setter ((setter-error 'location self)))))
+
+(defun ellipse (&rest initargs)
+  (apply #'make-instance 'ellipse initargs))
 
 (defclass ellipse (2d-mixin conic-section-mixin entity-mixin)
   ((degenerate? :slot-class :virtual
@@ -1914,7 +1961,15 @@
 	(evaluate1 line-a intersection)))))
 
 (defmethod intersection ((line-a 2d-line) (line-b 2d-line))
-  (intersection-2d-line/2d-line line-a line-b))	
+  (intersection-2d-line/2d-line line-a line-b))
+
+(defmethod offset ((line 2d-line) distance)
+  (let* ((line-direction (send line direction))
+	 (offset-direction (vec2 (- (vy line-direction)) (vx line-direction)))
+	 (offset-vector (v* distance offset-direction))
+	 (start (v+ (send line start) offset-vector))
+	 (end (v+ (send line end) offset-vector)))
+    (2d-line :start start :end end)))
 
 (defun convex-polygon-domain (polygon)
   (loop for i from 0 below (1- (length polygon))
@@ -1947,7 +2002,7 @@
     n))
        
 
-(defun roots (polynomial &optional (epsilon 1.0d-15))
+(defun roots (polynomial &optional (epsilon 1.0d-8))
   (let* ((intervals (isolate-roots-vas-cf polynomial)))
     (sort (apply #'append
 		 (mapcar #'(lambda (interval)
@@ -1972,7 +2027,7 @@
     (let ((roots (roots-of-2d-bezier control-points intervals epsilon)))
       (sort (mapcar #'(lambda (s) (+ a (* s (- b a)))) roots) #'<))))
 
-(defmethod 3d-math::mdet ((matrix simple-array))
+(defmethod 3d-math::mdet ((matrix #-allegro simple-array #+allegro array))
   (multiple-value-bind (LU P s) (mlu matrix)
     (declare (ignore P))
     (let ((nrows (first (array-dimensions LU))))
@@ -1980,7 +2035,7 @@
 	    for i from 0 below nrows
 	    finally (return det)))))
 
-(defmethod 3d-math::mcopy ((matrix simple-array))
+(defmethod 3d-math::mcopy ((matrix #-allegro simple-array #+allegro array))
   (destructuring-bind (rows cols) (array-dimensions matrix)
     (let ((result (make-array `(,rows ,cols) :element-type (array-element-type matrix))))
       (loop for i from 0 below rows
@@ -2130,11 +2185,11 @@
   (let ((discriminant (sqrt (- (expt b 2) (* 4 a c))))
 	(2a (* 2 a))
 	(-b (- b)))
-    (values (/ (+ -b discriminant) 2a)
-	    (/ (- -b discriminant) 2a))))
+    (list (/ (+ -b discriminant) 2a)
+	  (/ (- -b discriminant) 2a))))
 	
 
-(defun intersection-2d-line/circle-1 (line circle)
+(defun intersection-2d-line/circle-1 (line circle &optional (epsilon 1.0d-8))
   (let* ((p0 (send line start))
 	 (p1 (send line end))
 	 (c (send circle center))
@@ -2153,18 +2208,49 @@
 	 (C2 (+ (expt x0 2) (- (* 2 x0 x1)) (expt x1 2)
 		(expt y0 2) (- (* 2 y0 y1)) (expt y1 2))))
     ;; returns intersection in parameter space of line
-    (quadratic-formula C2 C1 C0)))
+    (let ((roots (quadratic-formula C2 C1 C0)))
+      (remove nil (mapcar #'(lambda (root)
+		  (if (complexp root)
+		      (if (within-tolerance (imagpart root) 0 epsilon)
+			  (realpart root)
+			  nil)
+		      root))
+	      roots)))
+    ;;(roots (vector c0 c1 c2) 1.0d-8)
+    ))
 
 (defun intersection-2d-line/circle (line circle)
   (when (eq (send line coordinate-system) (send circle coordinate-system))
     (let ((roots (intersection-2d-line/circle-1 line circle)))
       (apply #'values (mapcar #'(lambda (root) (evaluate1 line root)) roots)))))
 
+(defun intersection-2d-line/arc (line arc)
+  (when (eq (send line coordinate-system) (send arc coordinate-system))
+    (let* ((roots (intersection-2d-line/circle-1 line arc))
+	   (points (mapcar #'(lambda (root) (evaluate1 line root)) roots)))
+      (when points
+	(values-list
+	 (loop for point in points
+	       append (let* ((center-to-point (v- point (send arc center)))
+			     (dir (v/ center-to-point (send arc radius)))
+			     (param (atan (vy dir) (vx dir))))
+			(if (eq (send arc orientation) :ccw)
+			    (when (<= (send arc start-angle) param (send arc end-angle))
+			      (list point))
+			    (when (<= (send arc end-angle) param (send arc start-angle))
+			      (list point))))))))))
+
 (defmethod intersection ((line 2d-line) (circle circle))
   (intersection-2d-line/circle line circle))
 
 (defmethod intersection ((circle circle) (line 2d-line))
   (intersection-2d-line/circle line circle))
+
+(defmethod intersection ((arc arc) (line 2d-line))
+  (intersection-2d-line/arc line arc))
+
+(defmethod intersection ((line 2d-line) (arc arc))
+  (intersection-2d-line/arc line arc))
   
 (defun intersection-2d-line/ellipse-1 (line ellipse)
   (let* ((p0 (send line start))
@@ -2329,6 +2415,8 @@
 	 (a&b (vunit (vec2 (/ (vx line-eq) W) (/ (vy line-eq) W)))))
     (vector (vx a&b) (vy a&b) (- (v. a&b point-1)))))
 
+(defun arc (&rest initargs)
+  (apply #'make-instance 'arc initargs))
 
 (defclass arc (2d-mixin conic-section-mixin entity-mixin)
   ((degenerate? :slot-class :virtual
@@ -2414,6 +2502,12 @@
 	:type vec2
 	:getter ((the end-point)))
 
+   (mid-point :slot-class :virtual
+	      :type vec2
+	      :getter ((let ((mid-angle (+ (the start-angle) (/ (the delta-angle) 2.0d0)))
+			     (radius (the radius)))			 
+			 (vec2 (+ (the center-u) (* radius (cos mid-angle))) (+ (the center-v) (* radius (sin mid-angle)))))))
+
    (%center-to-start :slot-class :virtual
 		     :type vec2
 		     :getter ((v- (the start-point) (the center)))
@@ -2431,8 +2525,8 @@
 		    (let ((center (the center))
 			  (center-to-start (the %center-to-start))
 			  (center-to-end   (the %center-to-end)))
-		    (setf (the start-point) (+ center (v* value (vunit center-to-start))))
-		    (setf (the end-point)   (+ center (V* value (vunit center-to-end)))))))
+		    (setf (the start-point) (v+ center (v* value (vunit center-to-start))))
+		    (setf (the end-point)   (v+ center (V* value (vunit center-to-end)))))))
    
    (start-angle :slot-class :virtual
 		:type double-float
@@ -2477,7 +2571,7 @@
 			  (list (+ (mod start 2pi) (the delta-angle)) (mod start 2pi)))))			  
 	   :setter ((setter-error 'domain self)))))
 
-(defmethod draw ((self arc))
+(defmethod draw ((medium krma:krma-essential-scene-mixin) (self arc) &key)
   (let* ((center (the center))
 	 (radius (the radius))
 	 (plane  (the coordinate-system))
@@ -2492,7 +2586,27 @@
 				(coord-y (+ (vy center) (* radius (sin angle))))
 				(coord (safe-euclid (m* matrix (vec4 coord-x coord-y 0.0d0 1.0d0)))))
 			   (list (krma::clampf (vx coord)) (krma::clampf (vy coord)) (krma::clampf (vz coord)))))))
-      (push (krma::medium-add-filled-3d-instanced-tube-primitive (krma::default-medium) :default nil nil 3.0f0 #xff vertices (the climish::object-id))
+      (push (krma::medium-add-filled-3d-instanced-tube-primitive medium :default nil nil 2.5f0 #xff vertices (the climish::object-id))
+	    (the climish::primitive-handles))
+      (setf (krma::object-from-id (the climish::object-id)) self)
+      (values))))
+
+(defmethod draw ((medium krma:krma-essential-scene-mixin) (self circle) &key)
+  (let* ((center (the center))
+	 (radius (the radius))
+	 (plane  (the coordinate-system))
+	 (matrix (send plane matrix))
+	 (start-angle 0.0d0))
+    (let ((vertices
+	    (loop repeat 200 for i from 0
+		  with theta = start-angle
+		  with step  = (/ 2pi 199.0d0)
+		  append (let* ((angle (+ theta (* i step)))
+				(coord-x (+ (vx center) (* radius (cos angle))))
+				(coord-y (+ (vy center) (* radius (sin angle))))
+				(coord (safe-euclid (m* matrix (vec4 coord-x coord-y 0.0d0 1.0d0)))))
+			   (list (krma::clampf (vx coord)) (krma::clampf (vy coord)) (krma::clampf (vz coord)))))))
+      (push (krma::medium-add-filled-3d-instanced-tube-primitive medium :default nil nil 2.5f0 #xff vertices (the climish::object-id))
 	    (the climish::primitive-handles))
       (setf (krma::object-from-id (the climish::object-id)) self)
       (values))))
@@ -2612,6 +2726,8 @@
 
 	   ,@body)))))
 
+
+
 (defmethod initialize-instance ((self arc) &rest initargs &key &allow-other-keys)
   (let ((start-point (or (getf initargs :start-point)
 			 (getf initargs 'start-point)))
@@ -2639,7 +2755,7 @@
 
 	   (when radius
 	     (assert (plusp radius)))
-	   
+
 	   (call-next-method self
 			     :orientation orientation
 			     :center-u (vx center)
@@ -2679,16 +2795,16 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 			       :coordinate-system plane)))
 	  
 	  ((and center radius start-angle end-angle)
-
+	   
 	   (unless orientation
 	     (setq orientation :ccw))
 	   
 	   (assert (or (eq orientation :cw)
 		       (eq orientation :ccw)))
 
-	   (let ((start-point (v+ (the center) (vec2 (cos start-angle) (sin start-angle))))
-		 (end-point   (v+ (the center) (vec2 (cos end-angle) (sin end-angle)))))
-	   	   
+	   (let ((start-point (v+ center (v* radius (vec2 (cos start-angle) (sin start-angle)))))
+		 (end-point   (v+ center (v* radius (vec2 (cos end-angle) (sin end-angle))))))
+	     
 	     (call-next-method self
 			       :orientation orientation
 			       :center-u (vx center)
@@ -2697,7 +2813,13 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 			       :start-v (vy start-point)
 			       :end-u (vx end-point)
 			       :end-v (vy end-point)
-			       :coordinate-system plane))))))
+			       :coordinate-system plane)))
+
+	  (t (break) (call-next-method)))))
+	  
+
+(defun rational-power-basis-plane-curve (&rest initargs)
+  (apply #'make-instance 'rational-power-basis-plane-curve initargs))
 
 (defclass rational-power-basis-plane-curve (plane-curve-mixin parametric-curve-mixin geometry-mixin)
   ((wx-polynomial :initarg :wx-polynomial)
@@ -2720,7 +2842,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
     
 
 (defclass bezier-mixin ()
-  ((homogeneous-control-points :type simple-array
+  ((homogeneous-control-points :type #-allegro simple-array #+allegro array
 			       :initarg :%homogeneous-control-points)))
 
 (defclass bezier-curve-mixin (bezier-mixin parametric-curve-mixin geometry-mixin)
@@ -2757,6 +2879,9 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 	      :getter (nil)
 	      :setter ((setter-error 'periodic? self)))))
 
+(defun bezier-space-curve (&rest initargs)
+  (apply #'make-instance 'bezier-space-curve initargs))
+
 (defclass bezier-space-curve (space-curve-mixin bezier-curve-mixin entity-mixin)
   ((rational? :slot-class :virtual
 	      :type boolean
@@ -2766,6 +2891,8 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 				always (= (vw cpoint) 1.0d0)))))
 	      :setter ((setter-error 'rational? self)))))
 
+(defun bezier-plane-curve (&rest initargs)
+  (apply #'make-instance 'bezier-plane-curve initargs))
 
 (defclass bezier-plane-curve (plane-curve-mixin bezier-curve-mixin entity-mixin)
   ((rational? :slot-class :virtual
@@ -2843,7 +2970,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 
 
 
-(declaim (ftype (function (simple-array double-float) vec3) decasteljau1))
+(declaim (ftype (function (#-allegro simple-array #+allegro array double-float) vec3) decasteljau1))
 (defun decasteljau1 (P u)
   (declare (type double-float u))
   (declare (type sequence P))
@@ -2863,7 +2990,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 					   (cl:the vec3 (v* u (aref Q (1+ i)))))))
 	  finally (return (aref Q 0)))))
 
-(declaim (ftype (function (simple-array double-float) vec2) decasteljau1-2d))
+(declaim (ftype (function (#-allegro simple-array #+allegro array double-float) vec2) decasteljau1-2d))
 (defun decasteljau1-2d (P u)
   (declare (type double-float u))
   (declare (type sequence P))
@@ -2872,7 +2999,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 	 (Q (make-array n+1 :element-type 'vec2
 			    :initial-element (load-time-value (vec2 most-positive-double-float
 								    most-positive-double-float)))))
-    (declare (type (simple-array vec2) Q))
+    (declare (type (#-allegro simple-array #+allegro array vec2) Q))
     (declare (type fixnum n+1))
     (loop for i from 0 below n+1
 	  do (setf (aref Q i) (elt P i)))
@@ -2882,7 +3009,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 					   (cl:the vec2 (v* u (aref Q (1+ i)))))))
 	  finally (return (aref Q 0)))))
 
-(declaim (ftype (function (fixnum double-float) (simple-array double-float)) bernstein))
+(declaim (ftype (function (fixnum double-float) (#-allegro simple-array #+allegro array double-float)) bernstein))
 (defun bernstein (n u)
   (declare (type fixnum n) (type double-float u))
   (declare (optimize (speed 3) (safety 1)))
@@ -2928,7 +3055,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 
 
 (defclass b-spline-mixin ()
-  ((homogeneous-control-points :type simple-array
+  ((homogeneous-control-points :type #-allegro simple-array #+allegro array
 			       :initarg :%homogeneous-control-points)))
 
 (defclass b-spline-curve-mixin (b-spline-mixin parametric-curve-mixin curve-mixin)
@@ -2941,7 +3068,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 		      (- m n 1)))
 	   :setter ((setter-error 'degree-u self)))
    
-   (knot-vector :type simple-array
+   (knot-vector :type #-allegro simple-array #+allegro array
 		:initarg :knot-vector
 		:initarg knot-vector)
    
@@ -3007,6 +3134,9 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 
 (defgeneric insert-knot (b-spline-curve knot i))
 
+(defun b-spline-plane-curve (&rest initargs)
+  (apply #'make-instance 'b-spline-plane-curve initargs))
+
 (defclass b-spline-plane-curve (plane-curve-mixin b-spline-curve-mixin entity-mixin)
   ((rational? :slot-class :virtual
 	      :type boolean
@@ -3068,7 +3198,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 		 :degree p
 		 initargs)))))
 
-(defmethod draw ((self b-spline-plane-curve))
+(defmethod draw ((medium krma:krma-essential-scene-mixin) (self b-spline-plane-curve) &key)
   (let ((vertices (append
 		   (loop for i from 0 below 100
 			 with u0 = 0.0d0
@@ -3084,7 +3214,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 				(the coordinate-system))))
 		     (list (vx vec3) (vy vec3) (vz vec3))))))
     (push (krma::medium-add-filled-3d-instanced-tube-primitive
-	   (krma::default-medium) :default nil nil 3.0f0 #xff vertices
+	   medium :default nil nil 2.5f0 #xff vertices
 	   (the climish::object-id))
 	  (the climish::primitive-handles))
     (setf (krma::object-from-id (the climish::object-id)) self)
@@ -3399,7 +3529,8 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 						
 
 
-  
+(defun b-spline-space-curve (&rest initargs)
+  (apply #'make-instance 'b-spline-space-curve initargs))
 
 (defclass b-spline-space-curve (space-curve-mixin b-spline-curve-mixin entity-mixin)
   ((rational? :slot-class :virtual
@@ -3822,12 +3953,13 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 		      (return (safe-euclid Sw))))))
 	  
 
-   
+(defun b-spline-surface (&rest initargs)
+  (apply #'make-instance 'b-spline-surface initargs))
   
 (defclass b-spline-surface (3d-mixin b-spline-surface-mixin entity-mixin)
   ())
 
-(defmethod draw ((self b-spline-surface-mixin))
+(defmethod draw ((medium krma:krma-essential-scene-mixin) (self b-spline-surface-mixin) &key)
   (let* ((kv-u (the knot-vector-u))
 	 (kv-v (the knot-vector-v))
 	 (u-min (aref kv-u 0))
@@ -3885,7 +4017,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 
     (print (apply #'max indices))
 
-    (let ((scene (krma::frame-manager-default-medium clim:*default-frame-manager*))
+    (let ((scene medium)
 	  (oid (the climish::object-id))
 	  (color (krma::canonicalize-color (or (the color) #x00ffffff)))
 	  (group (or (the %group-id) :default)))
