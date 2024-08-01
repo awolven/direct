@@ -2418,7 +2418,7 @@
 (defun arc (&rest initargs)
   (apply #'make-instance 'arc initargs))
 
-(defclass arc (2d-mixin conic-section-mixin entity-mixin)
+(defclass arc (plane-curve-mixin conic-section-mixin entity-mixin)
   ((degenerate? :slot-class :virtual
 		:type boolean
 		:getter ((or (= 0.0d0 (the radius))
@@ -4046,7 +4046,101 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 			  cmd)))))))))))
 			      
 										
-										
+(defmethod edges-connect? ((edge1 direct::plane-curve-mixin) (edge2 direct::plane-curve-mixin))
+  (let ((edge1-start (send edge1 start))
+	(edge1-end   (send edge1 end))
+	(edge2-start (send edge2 start))
+	(edge2-end   (send edge2 end)))
+  (or (and (direct::within-tolerance (vx edge1-start) (vx edge2-start))
+	   (direct::within-tolerance (vy edge1-start) (vy edge2-start)))
+      (and (direct::within-tolerance (vx edge1-start) (vx edge2-end))
+	   (direct::within-tolerance (vy edge1-start) (vy edge2-end)))
+      (and (direct::within-tolerance (vx edge1-end)   (vx edge2-start))
+	   (direct::within-tolerance (vy edge1-end)   (vy edge2-start)))
+      (and (direct::within-tolerance (vx edge1-end)   (vx edge2-end))
+	   (direct::within-tolerance (vy edge1-end)   (vy edge2-end))))))
+
+(defmethod edges-connect? ((edge1 direct::circle) edge2)
+  nil)
+
+(defmethod edges-connect? (edge1 (edge2 direct::circle))
+  nil)
+
+(defmethod edges-connect? ((edge1 direct::circle) (edge2 direct::circle))
+  nil)
+
+(defun sort-edges-into-wire-chains (edges)
+  (if (null (cdr edges))
+	
+      edges
+	
+      (let ((chains (mapcar #'(lambda (e) (list :head e)) edges))
+	    (mutated?))
+	  
+	(flet ((mutate-chains ()
+		 (let* ((two chains)
+			(chain-a)
+			(chain-b)
+			(edge-a)
+			(edge-b)
+			(edge-c))
+
+		   (tagbody
+     
+		    :begin
+
+		      (unless (cdr two)
+			(return-from mutate-chains))
+			
+		      (setq chain-a (car chains))
+		      (setq chain-b (cadr two))
+			
+		      (setq edge-a (cadr chain-a))
+		      (setq edge-b (cadr chain-b))
+			
+		      (if (edges-connect? edge-b edge-a)
+			  (loop for edge in (cdr chain-b)
+				do (push edge (cdr chain-a))
+				finally (setf (cdr two) (cddr two)
+					      mutated? t))
+			  (progn
+			    (setq edge-c (car (last chain-a)))
+			      
+			    (unless (eq edge-c edge-a)
+			      (when (edges-connect? edge-b edge-c)
+				(nconc chain-a (cdr chain-b))
+				(setf (cdr two) (cddr two)
+				      mutated? t)))))
+			
+		      (setf two (cdr two))
+			
+		      (go :begin)))))
+	  (tagbody
+
+	   :again
+
+	     (setq mutated? nil)
+	       
+	     (dotimes (n (length chains))
+	       (setf chains (append (cdr chains) (list (car chains))))
+	       (mutate-chains))
+	       
+	     (when mutated?
+	       (go :again)))
+	    
+	  (mapcar #'cdr chains)))))
+
+(defun loop-p (chain)
+  (edges-connect? (first chain) (car (last chain))))
+
+(defun interior-loop? (loop candidate-exterior-loop)
+  (let* ((ray-origin (send (first loop) start))
+	 (point-b (send (first candidate-exterior-loop) start))
+	 (ray-dir (vunit (v- ray-origin point-b)))
+	 (ray (make-ray ray-origin ray-dir)))
+    (oddp
+     (loop for edge in candidate-exterior-loop
+	   sum (length (intersection ray edge))))))
 										
 										
 										
