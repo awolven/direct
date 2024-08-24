@@ -1,0 +1,71 @@
+(in-package :direct)
+
+#|
+cd ~/maxima/src/binary-sbcl
+/usr/local/bin/sbcl --core maxima.core --dynamic-space-size 512000
+
+(cl-user::run)
+
+PA:[[xa0,ya0],[xa1,ya1],[xa2,ya2],[xa3,ya3]];
+WA:[wa0,wa1,wa2,wa3];
+PB:[[xb0,yb0],[xb1,yb1],[xb2,yb2]];
+WB:[wb0,wb1,wb2];
+Bin(sym,n):=binomial(n,i)*(sym^i)*(1-sym)^(n-i);
+CA:sum(WA[i+1]*PA[i+1]*Bin(t,3),i,0,3)/sum(WA[i+1]*Bin(t,3),i,0,3);
+CB:sum(WB[i+1]*PB[i+1]*Bin(s,2),i,0,2)/sum(WB[i+1]*Bin(s,2),i,0,2);
+XA:CA[1];
+YA:CA[2];
+XB:CB[1];
+YB:CB[2];
+
+IMPLIC:resultant(XA-x,YA-y,t);
+
+INTER0:subst([x=XB,y=YB],''IMPLIC);
+
+INTER1:ratsimp(INTER0,s)$
+
+INTER2:denom(INTER1)*INTER1$
+
+INTER3:collectterms(INTER2,[s])$
+
+coeffs(polynomial, vars, degrees) :=
+ block([coef:polynomial],
+       for i from 1 thru length(degrees)
+        do block([degree:degrees[i]],
+	         coef:ratcoef(coef, vars[i], degree)),
+coef);
+
+ratsimp(coeffs(INTER3,[s],[0]));
+
+to_lisp();
+(defun clify-maxima-expression (expression)
+  (when expression
+    (cond ((listp expression)
+	   (cond ((typep (car expression) 'cons)
+		  (cond ((eq (caar expression) 'maxima::mplus)
+			 (cons '+ (mapcar #'clify-maxima-expression (cdr expression))))
+			((eq (caar expression) 'maxima::mtimes)
+			 (cons '* (mapcar #'clify-maxima-expression (cdr expression))))
+			((eq (caar expression) 'maxima::mexpt)
+			 (cons 'expt (mapcar #'clify-maxima-expression (cdr expression))))
+			(t (cons (car expression) (mapcar #'clify-maxima-expression (cdr expression))))))
+		 (t (error "A"))))
+	  ((typep expression 'number) expression)
+	  ((typep expression 'symbol)
+	   (cond ((char= #\$ (char (symbol-name expression) 0))
+		  (intern (subseq (symbol-name expression) 1)))
+		 (t expression)))
+(t (error "B")))))
+
+(setq *print-level* nil *print-length* nil)
+
+(pprint (cse (clify-maxima-expression $%)))
+(to-maxima)
+
+ratsimp(coeffs(INTER3,[s],[1]));
+ratsimp(coeffs(INTER3,[s],[2]));
+ratsimp(coeffs(INTER3,[s],[3]));
+ratsimp(coeffs(INTER3,[s],[4]));
+ratsimp(coeffs(INTER3,[s],[5]));
+ratsimp(coeffs(INTER3,[s],[6]));
+|#
