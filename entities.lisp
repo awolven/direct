@@ -2199,12 +2199,12 @@
 	  (/ (- -b discriminant) 2a))))
 	
 
-(defun intersection-ray/circle-1 (start end circle &optional (epsilon 1.0d-8))
+(defun intersection-polynomial-circle/2d-ray (circle start end)
   (let* ((c (send circle center))
-	 (x0 (vx p0))
-	 (y0 (vy p0))
-	 (x1 (vx p1))
-	 (y1 (vy p1))
+	 (x0 (vx start))
+	 (y0 (vy start))
+	 (x1 (vx end))
+	 (y1 (vy end))
 	 (xc (vx c))
 	 (yc (vy c))
 	 (radius (send circle radius))
@@ -2215,8 +2215,21 @@
 		(- (* 2 (expt y0 2))) (* 2 y0 y1) (* 2 y0 yc) (- (* 2 y1 yc))))
 	 (C2 (+ (expt x0 2) (- (* 2 x0 x1)) (expt x1 2)
 		(expt y0 2) (- (* 2 y0 y1)) (expt y1 2))))
-    ;; returns intersection in parameter space of line
-    (real-roots (vector C0 C1 C2))))
+    (vector C0 C1 C2)))
+
+(defun intersection-circle/2d-ray-2 (circle start end &optional (epsilon 1.0d-8))
+  (real-roots (intersection-polynomial-circle/2d-ray circle start end) epsilon))
+
+(defun intersection-circle/2d-ray-1 (circle start end &optional (epsilon 1.0d-8))
+  "returns intersection in parameter space of ray"
+  (let ((roots (intersection-2d-ray/circle-2 circle start end epsilon)))
+    (remove-if-not #'(lambda (root)
+		       (<= 0.0d0 root)) roots)))
+
+(defun intersection-circle/2d-ray (circle start end &optional (epsilon 1.0d-8))
+  (let ((roots (intersection-2d-ray/circle-1 circle start end epsilon)))
+    (mapcar #'(lambda (root)
+		(lerp start end root)) roots)))
 
 #|
 CIRCLE:(x-xa0)^2+(y-ya0)^2-radius^2;
@@ -2246,12 +2259,12 @@ ratsimp(coeffs(INTER3,[s],[2]));
 
 (defun intersection-2d-line/circle (line circle)
   (when (eq (send line coordinate-system) (send circle coordinate-system))
-    (let ((roots (intersection-ray/circle-1 (send line start) (end line end) circle)))
+    (let ((roots (intersection-ray/circle-1 (send line start) (send line end) circle)))
       (apply #'values (mapcar #'(lambda (root) (evaluate1 line root)) roots)))))
 
 (defun intersection-ray/arc (start end arc)
-  (let* ((roots (intersection-2d-line/circle-1 start end arc))
-	   (points (mapcar #'(lambda (root) (evaluate1 line root)) roots)))
+  (let* ((roots (intersection-ray/circle-1 start end arc))
+	 (points (mapcar #'(lambda (root) (lerp start end root)) roots)))
       (when points
 	(values-list
 	 (loop for point in points
@@ -2268,18 +2281,6 @@ ratsimp(coeffs(INTER3,[s],[2]));
   (when (eq (send line coordinate-system) (send arc coordinate-system))
     (intersection-ray/arc (send line start) (send line end) arc)))
 
-(defmethod intersection ((line 2d-line) (circle circle))
-  (intersection-2d-line/circle line circle))
-
-(defmethod intersection ((circle circle) (line 2d-line))
-  (intersection-2d-line/circle line circle))
-
-(defmethod intersection ((arc arc) (line 2d-line))
-  (intersection-2d-line/arc line arc))
-
-(defmethod intersection ((line 2d-line) (arc arc))
-  (intersection-2d-line/arc line arc))
-  
 (defun intersection-2d-line/ellipse-1 (line ellipse)
   (let* ((p0 (send line start))
 	 (p1 (send line end))
@@ -2314,87 +2315,7 @@ ratsimp(coeffs(INTER3,[s],[2]));
 (defmethod intersection ((ellipse ellipse) (line 2d-line))
   (intersection-2d-line/ellipse line ellipse))
 
-(defun intersection-ray/planar-rational-bezier-1 (start end bezier)
-  (declare (type bezier-plane-curve bezier))
-  (let ((degree (send bezier degree)))
-    (declare (type fixnum degree))
-    (cond ((= degree 2)
-	   (intersection-ray/planar-rational-quadratic-bezier-2 start end bezier))
-	  ((= degree 3)
-	   (intersection-ray/planar-rational-cubic-bezier-2 start end bezier))
-	  (t (error "not implemented for degree: ~S" degree)))))
 
-(defmethod number-of-intersections-planar-ray/entity ((start 3dm.d::vec2)
-						      (end 3dm.d::vec2)
-						      (bezier bezier-plane-curve))
-  (length (intersection-ray/planar-rational-bezier-1 start end bezier)))
-  
-
-(defun intersection-ray/planar-rational-quadratic-bezier-2 (start end bezier)
-  (declare (type bezier-plane-curve bezier))
-  (declare (type 3dm.d::vec2 start end))
-  (let* ((xa0 (rationalize (vx end)))
-	 (ya0 (rationalize (vy end)))
-	 (xa1 (rationalize (vx start)))
-	 (ya1 (rationalize (vy start)))
-	 (hcpoints (send bezier homogeneous-control-points))
-	 (b0 (aref hcpoints 0))
-	 (b1 (aref hcpoints 1))
-	 (b2 (aref hcpoints 2))
-	 (xb0 (rationalize (vx b0)))
-	 (yb0 (rationalize (vy b0)))
-	 (wb0 (rationalize (vz b0)))
-	 (xb1 (rationalize (vx b1)))
-	 (yb1 (rationalize (vy b1)))
-	 (wb1 (rationalize (vz b1)))
-	 (xb2 (rationalize (vx b2)))
-	 (yb2 (rationalize (vy b2)))
-	 (wb2 (rationalize (vz b2)))
-	 (domain (send bezier domain)))
-    (remove-if-not #'(lambda (root)
-		       (<= (car domain) root (cadr domain)))
-		   (real-roots (vector (intersection-ray/planar-rational-quadratic-bezier-c0
-					xa0 ya0 xa1 ya1 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
-				       (intersection-ray/planar-rational-quadratic-bezier-c1
-					xa0 ya0 xa1 ya1 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
-				       (intersection-ray/planar-rational-quadratic-bezier-c2
-					xa0 ya0 xa1 ya1 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2))))))
-
-(defun intersection-ray/planar-rational-cubic-bezier-2 (start end bezier)
-  (declare (type bezier-plane-curve bezier))
-  (declare (type 3dm.d::vec2 start end))
-  (let* ((xa0 (rationalize (vx end)))
-	 (ya0 (rationalize (vy end)))
-	 (xa1 (rationalize (vx start)))
-	 (ya1 (rationalize (vy start)))
-	 (hcpoints (send bezier homogeneous-control-points))
-	 (b0 (aref hcpoints 0))
-	 (b1 (aref hcpoints 1))
-	 (b2 (aref hcpoints 2))
-	 (b3 (aref hcpoints 3))
-	 (xb0 (rationalize (vx b0)))
-	 (yb0 (rationalize (vy b0)))
-	 (wb0 (rationalize (vz b0)))
-	 (xb1 (rationalize (vx b1)))
-	 (yb1 (rationalize (vy b1)))
-	 (wb1 (rationalize (vz b1)))
-	 (xb2 (rationalize (vx b2)))
-	 (yb2 (rationalize (vy b2)))
-	 (wb2 (rationalize (vz b2)))
-	 (xb3 (rationalize (vx b3)))
-	 (yb3 (rationalize (vy b3)))
-	 (wb3 (rationalize (vz b3)))
-	 (domain (send bezier domain)))
-    (remove-if-not #'(lambda (root)
-		       (<= (car domain) root (cadr domain)))
-		   (real-roots (vector (intersection-ray/planar-rational-cubic-bezier-c0
-					xa0 ya0 xa1 ya1 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2 xb3 yb3 wb3)
-				       (intersection-ray/planar-rational-cubic-bezier-c1
-					xa0 ya0 xa1 ya1 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2 xb3 yb3 wb3)
-				       (intersection-ray/planar-rational-cubic-bezier-c2
-					xa0 ya0 xa1 ya1 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2 xb3 yb3 wb3)
-				       (intersection-ray/planar-rational-cubic-bezier-c3
-					xa0 ya0 xa1 ya1 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2 xb3 yb3 wb3))))))
 	 
 	   
 	      
@@ -2572,7 +2493,138 @@ ratsimp(coeffs(INTER3,[s],[2]));
 		    (roots (intersection-planar-rational-cubic-power-basis-curve/planar-rational-cubic-power-basis-curve-1
 			    power-basis-a power-basis-b)))
 	       (mapcar #'(lambda (root)
-			   (evaluate1 power-basis-b root)) roots)))))))
+			   (evaluate1 power-basis-b root)) roots)))
+	    ((and (= deg-a 3) (= deg-b 2))
+	     (let ((roots
+		     (intersection-planar-rational-cubic-bezier/planar-rational-quadratic-bezier-1
+		      bezier-a bezier-b)))
+	       (mapcar #'(lambda (root)
+			   (evaluate1 bezier-b root)) roots)))
+
+	    ((and (= deg-a 2) (= deg-b 3))
+	     (let ((roots
+		     (intersection-planar-rational-quadratic-bezier/planar-rational-cubic-bezier-1
+		      bezier-a bezier-b)))
+	       (mapcar #'(lambda (root)
+			   (evaluate1 bezier-b root)) roots)))))))
+
+(defun intersection-planar-rational-quadratic-bezier/planar-rational-cubic-bezier-1 (bezier-a bezier-b)
+  (let* ((hcp-a (send bezier-a homogeneous-control-points))
+	 (hcp-b (send bezier-b homogeneous-control-points))
+	 (a0 (aref hcp-a 0))
+	 (a1 (aref hcp-a 1))
+	 (a2 (aref hcp-a 2))
+	 (b0 (aref hcp-b 0))
+	 (b1 (aref hcp-b 1))
+	 (b2 (aref hcp-b 2))
+	 (b3 (aref hcp-b 3))
+	 (xa0 (rationalize (vx a0)))
+	 (ya0 (rationalize (vy a0)))
+	 (wa0 (rationalize (vz a0)))
+	 (xa1 (rationalize (vx a1)))
+	 (ya1 (rationalize (vy a1)))
+	 (wa1 (rationalize (vz a1)))
+	 (xa2 (rationalize (vx a2)))
+	 (ya2 (rationalize (vy a2)))
+	 (wa2 (rationalize (vz a2)))
+	 (xb0 (rationalize (vx b0)))
+	 (yb0 (rationalize (vy b0)))
+	 (wb0 (rationalize (vz b0)))
+	 (xb1 (rationalize (vx b1)))
+	 (yb1 (rationalize (vy b1)))
+	 (wb1 (rationalize (vz b1)))
+	 (xb2 (rationalize (vx b2)))
+	 (yb2 (rationalize (vy b2)))
+	 (wb2 (rationalize (vz b2)))
+	 (xb3 (rationalize (vx b3)))
+	 (yb3 (rationalize (vy b3)))
+	 (wb3 (rationalize (vz b3)))
+	 (domain (send bezier-b domain)))
+    (remove-if-not #'(lambda (root)
+		       (<= (car domain) root (cadr domain)))
+		   (real-roots
+		    (vector
+		     (intersection-planar-rational-quadratic-bezier/planar-rational-cubic-bezier-c0
+		      xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2
+		      xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2 xb3 yb3 wb3)
+		     (intersection-planar-rational-quadratic-bezier/planar-rational-cubic-bezier-c1
+		      xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2
+		      xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2 xb3 yb3 wb3)
+		     (intersection-planar-rational-quadratic-bezier/planar-rational-cubic-bezier-c2
+		      xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2
+		      xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2 xb3 yb3 wb3)
+		     (intersection-planar-rational-quadratic-bezier/planar-rational-cubic-bezier-c3
+		      xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2
+		      xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2 xb3 yb3 wb3)
+		     (intersection-planar-rational-quadratic-bezier/planar-rational-cubic-bezier-c4
+		      xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2
+		      xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2 xb3 yb3 wb3)
+		     (intersection-planar-rational-quadratic-bezier/planar-rational-cubic-bezier-c5
+		      xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2
+		      xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2 xb3 yb3 wb3)
+		     (intersection-planar-rational-quadratic-bezier/planar-rational-cubic-bezier-c6
+		      xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2
+		      xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2 xb3 yb3 wb3))))))
+
+(defun intersection-planar-rational-cubic-bezier/planar-rational-quadratic-bezier-1 (bezier-a bezier-b)
+  (let* ((hcp-a (send bezier-a homogeneous-control-points))
+	 (hcp-b (send bezier-b homogeneous-control-points))
+	 (a0 (aref hcp-a 0))
+	 (a1 (aref hcp-a 1))
+	 (a2 (aref hcp-a 2))
+	 (a3 (aref hcp-a 3))
+	 (b0 (aref hcp-b 0))
+	 (b1 (aref hcp-b 1))
+	 (b2 (aref hcp-b 2))
+	 (xa0 (rationalize (vx a0)))
+	 (ya0 (rationalize (vy a0)))
+	 (wa0 (rationalize (vz a0)))
+	 (xa1 (rationalize (vx a1)))
+	 (ya1 (rationalize (vy a1)))
+	 (wa1 (rationalize (vz a1)))
+	 (xa2 (rationalize (vx a2)))
+	 (ya2 (rationalize (vy a2)))
+	 (wa2 (rationalize (vz a2)))
+	 (xa3 (rationalize (vx a3)))
+	 (ya3 (rationalize (vy a3)))
+	 (wa3 (rationalize (vz a3)))
+	 (xb0 (rationalize (vx b0)))
+	 (yb0 (rationalize (vy b0)))
+	 (wb0 (rationalize (vz b0)))
+	 (xb1 (rationalize (vx b1)))
+	 (yb1 (rationalize (vy b1)))
+	 (wb1 (rationalize (vz b1)))
+	 (xb2 (rationalize (vx b2)))
+	 (yb2 (rationalize (vy b2)))
+	 (wb2 (rationalize (vz b2)))
+	 (domain (send bezier-b domain)))
+    (remove-if-not #'(lambda (root)
+		       (<= (car domain) root (cadr domain)))
+		   (real-roots
+		    (vector
+		     (intersection-planar-rational-cubic-bezier/planar-rational-quadratic-bezier-c0
+		      xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xa3 ya3 wa3
+		      xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
+		     (intersection-planar-rational-cubic-bezier/planar-rational-quadratic-bezier-c1
+		      xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xa3 ya3 wa3
+		      xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
+		     (intersection-planar-rational-cubic-bezier/planar-rational-quadratic-bezier-c2
+		      xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xa3 ya3 wa3
+		      xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
+		     (intersection-planar-rational-cubic-bezier/planar-rational-quadratic-bezier-c3
+		      xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xa3 ya3 wa3
+		      xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
+		     (intersection-planar-rational-cubic-bezier/planar-rational-quadratic-bezier-c4
+		      xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xa3 ya3 wa3
+		      xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
+		     (intersection-planar-rational-cubic-bezier/planar-rational-quadratic-bezier-c5
+		      xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xa3 ya3 wa3
+		      xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
+		     (intersection-planar-rational-cubic-bezier/planar-rational-quadratic-bezier-c6
+		      xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xa3 ya3 wa3
+		      xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
+		     )))))
+	 
   
 	 
 	      
@@ -4463,17 +4515,111 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 	 (yb2 (rationalize (vy pb2)))
 	 (wb2 (rationalize (vz pb2))))
 	
-    (real-roots (vector (rational-cubic-bezier/quadratic-bezier-c0
+    (real-roots (vector (intersection-planar-rational-cubic-bezier/planar-rational-quadratic-bezier-c0
 			 xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xa3 ya3 wa3 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
-			(rational-cubic-bezier/quadratic-bezier-c1
+			(intersection-planar-rational-cubic-bezier/planar-rational-quadratic-bezier-c1
 			 xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xa3 ya3 wa3 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
-			(rational-cubic-bezier/quadratic-bezier-c2
+			(intersection-planar-rational-cubic-bezier/planar-rational-quadratic-bezier-c2
 			 xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xa3 ya3 wa3 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
-			(rational-cubic-bezier/quadratic-bezier-c3
+			(intersection-planar-rational-cubic-bezier/planar-rational-quadratic-bezier-c3
 			 xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xa3 ya3 wa3 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
-			(rational-cubic-bezier/quadratic-bezier-c4
+			(intersection-planar-rational-cubic-bezier/planar-rational-quadratic-bezier-c4
 			 xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xa3 ya3 wa3 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
-			(rational-cubic-bezier/quadratic-bezier-c5
+			(intersection-planar-rational-cubic-bezier/planar-rational-quadratic-bezier-c5
 			 xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xa3 ya3 wa3 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
-			(rational-cubic-bezier/quadratic-bezier-c6
+			(intersection-planar-rational-cubic-bezier/planar-rational-quadratic-bezier-c6
 			 xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xa3 ya3 wa3 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)))))
+
+(defmethod intersection ((line 2d-line) (circle circle))
+  (intersection-2d-line/circle line circle))
+
+(defmethod intersection ((circle circle) (line 2d-line))
+  (intersection-2d-line/circle line circle))
+
+(defmethod intersection ((arc arc) (line 2d-line))
+  (intersection-2d-line/arc line arc))
+
+(defmethod intersection ((line 2d-line) (arc arc))
+  (intersection-2d-line/arc line arc))
+
+(defun intersection-ray/planar-rational-bezier-1 (start end bezier)
+  (declare (type bezier-plane-curve bezier))
+  (let ((degree (send bezier degree)))
+    (declare (type fixnum degree))
+    (cond ((= degree 2)
+	   (intersection-ray/planar-rational-quadratic-bezier-2 start end bezier))
+	  ((= degree 3)
+	   (intersection-ray/planar-rational-cubic-bezier-2 start end bezier))
+	  (t (error "not implemented for degree: ~S" degree)))))
+
+(defmethod number-of-intersections-planar-ray/entity ((start 3dm.d::vec2)
+						      (end 3dm.d::vec2)
+						      (bezier bezier-plane-curve))
+  (length (intersection-ray/planar-rational-bezier-1 start end bezier)))
+  
+
+(defun intersection-ray/planar-rational-quadratic-bezier-2 (start end bezier)
+  (declare (type bezier-plane-curve bezier))
+  (declare (type 3dm.d::vec2 start end))
+  (let* ((xa0 (rationalize (vx end)))
+	 (ya0 (rationalize (vy end)))
+	 (xa1 (rationalize (vx start)))
+	 (ya1 (rationalize (vy start)))
+	 (hcpoints (send bezier homogeneous-control-points))
+	 (b0 (aref hcpoints 0))
+	 (b1 (aref hcpoints 1))
+	 (b2 (aref hcpoints 2))
+	 (xb0 (rationalize (vx b0)))
+	 (yb0 (rationalize (vy b0)))
+	 (wb0 (rationalize (vz b0)))
+	 (xb1 (rationalize (vx b1)))
+	 (yb1 (rationalize (vy b1)))
+	 (wb1 (rationalize (vz b1)))
+	 (xb2 (rationalize (vx b2)))
+	 (yb2 (rationalize (vy b2)))
+	 (wb2 (rationalize (vz b2)))
+	 (domain (send bezier domain)))
+    (remove-if-not #'(lambda (root)
+		       (<= (car domain) root (cadr domain)))
+		   (real-roots (vector (intersection-ray/planar-rational-quadratic-bezier-c0
+					xa0 ya0 xa1 ya1 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
+				       (intersection-ray/planar-rational-quadratic-bezier-c1
+					xa0 ya0 xa1 ya1 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)
+				       (intersection-ray/planar-rational-quadratic-bezier-c2
+					xa0 ya0 xa1 ya1 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2))))))
+
+(defun intersection-ray/planar-rational-cubic-bezier-2 (start end bezier)
+  (declare (type bezier-plane-curve bezier))
+  (declare (type 3dm.d::vec2 start end))
+  (let* ((xa0 (rationalize (vx end)))
+	 (ya0 (rationalize (vy end)))
+	 (xa1 (rationalize (vx start)))
+	 (ya1 (rationalize (vy start)))
+	 (hcpoints (send bezier homogeneous-control-points))
+	 (b0 (aref hcpoints 0))
+	 (b1 (aref hcpoints 1))
+	 (b2 (aref hcpoints 2))
+	 (b3 (aref hcpoints 3))
+	 (xb0 (rationalize (vx b0)))
+	 (yb0 (rationalize (vy b0)))
+	 (wb0 (rationalize (vz b0)))
+	 (xb1 (rationalize (vx b1)))
+	 (yb1 (rationalize (vy b1)))
+	 (wb1 (rationalize (vz b1)))
+	 (xb2 (rationalize (vx b2)))
+	 (yb2 (rationalize (vy b2)))
+	 (wb2 (rationalize (vz b2)))
+	 (xb3 (rationalize (vx b3)))
+	 (yb3 (rationalize (vy b3)))
+	 (wb3 (rationalize (vz b3)))
+	 (domain (send bezier domain)))
+    (remove-if-not #'(lambda (root)
+		       (<= (car domain) root (cadr domain)))
+		   (real-roots (vector (intersection-ray/planar-rational-cubic-bezier-c0
+					xa0 ya0 xa1 ya1 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2 xb3 yb3 wb3)
+				       (intersection-ray/planar-rational-cubic-bezier-c1
+					xa0 ya0 xa1 ya1 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2 xb3 yb3 wb3)
+				       (intersection-ray/planar-rational-cubic-bezier-c2
+					xa0 ya0 xa1 ya1 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2 xb3 yb3 wb3)
+				       (intersection-ray/planar-rational-cubic-bezier-c3
+					xa0 ya0 xa1 ya1 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2 xb3 yb3 wb3))))))
