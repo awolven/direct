@@ -1194,13 +1194,13 @@
 	      :setter ((setq value (vunit value))
 		       (setf (the span) (v* (vlength (cl:the vec3 (the span))) (cl:the vec3 value)))))))
 
-(defgeneric draw (medium object &key))
+(defgeneric draw (scene object &key))
 
-(defmethod draw ((medium krma:krma-essential-scene-mixin) (self line) &key)
+(defmethod draw ((scene krma:krma-essential-scene-mixin) (self line) &key)
   (let* ((start (the start))
 	 (end (the end)))
-    (push (krma::medium-add-filled-3d-instanced-tube-primitive
-	   medium :default nil nil 2.5f0 #xff (list (vx start) (vy start) (vz start)
+    (push (krma::scene-add-filled-3d-instanced-tube-primitive
+	   scene :default nil nil 2.5f0 #xff (list (vx start) (vy start) (vz start)
 						    (vx end) (vy end) (vz end))
 	   (the climish::object-id))
 	  (the climish::primitive-handles))
@@ -1328,11 +1328,11 @@
 				   (axis (untransform (the direction) (the coordinate-system))))
 			       (make-instance 'axis1-placement :origin origin :axis axis))))))
 
-(defmethod draw ((medium krma:krma-essential-scene-mixin) (self 2d-line) &key)
+(defmethod draw ((scene krma:krma-essential-scene-mixin) (self 2d-line) &key)
   (let* ((start (untransform (the start) (the coordinate-system)))
 	 (end (untransform (the end) (the coordinate-system))))
-    (push (krma::medium-add-filled-3d-instanced-tube-primitive
-	   medium :default nil nil 2.5f0 #xff (list (vx start) (vy start) (vz start)
+    (push (krma::scene-add-filled-3d-instanced-tube-primitive
+	   scene :default nil nil 2.5f0 #xff (list (vx start) (vy start) (vz start)
 						    (vx end) (vy end) (vz end))
 	   (the climish::object-id))
 	  (the climish::primitive-handles))
@@ -2807,7 +2807,7 @@ ratsimp(coeffs(INTER3,[s],[2]));
 			  (list (+ (mod start 2pi) (the delta-angle)) (mod start 2pi)))))			  
 	   :setter ((setter-error 'domain self)))))
 
-(defmethod draw ((medium krma:krma-essential-scene-mixin) (self arc) &key)
+(defmethod draw ((scene krma:krma-essential-scene-mixin) (self arc) &key)
   (let* ((center (the center))
 	 (radius (the radius))
 	 (plane  (the coordinate-system))
@@ -2822,12 +2822,12 @@ ratsimp(coeffs(INTER3,[s],[2]));
 				(coord-y (+ (vy center) (* radius (sin angle))))
 				(coord (safe-euclid (m* matrix (vec4 coord-x coord-y 0.0d0 1.0d0)))))
 			   (list (krma::clampf (vx coord)) (krma::clampf (vy coord)) (krma::clampf (vz coord)))))))
-      (push (krma::medium-add-filled-3d-instanced-tube-primitive medium :default nil nil 2.5f0 #xff vertices (the climish::object-id))
+      (push (krma::scene-add-filled-3d-instanced-tube-primitive scene :default nil nil 2.5f0 #xff vertices (the climish::object-id))
 	    (the climish::primitive-handles))
       (setf (krma::object-from-id (the climish::object-id)) self)
       (values))))
 
-(defmethod draw ((medium krma:krma-essential-scene-mixin) (self circle) &key)
+(defmethod draw ((scene krma:krma-essential-scene-mixin) (self circle) &key)
   (let* ((center (the center))
 	 (radius (the radius))
 	 (plane  (the coordinate-system))
@@ -2842,7 +2842,7 @@ ratsimp(coeffs(INTER3,[s],[2]));
 				(coord-y (+ (vy center) (* radius (sin angle))))
 				(coord (safe-euclid (m* matrix (vec4 coord-x coord-y 0.0d0 1.0d0)))))
 			   (list (krma::clampf (vx coord)) (krma::clampf (vy coord)) (krma::clampf (vz coord)))))))
-      (push (krma::medium-add-filled-3d-instanced-tube-primitive medium :default nil nil 2.5f0 #xff vertices (the climish::object-id))
+      (push (krma::scene-add-filled-3d-instanced-tube-primitive scene :default nil nil 2.5f0 #xff vertices (the climish::object-id))
 	    (the climish::primitive-handles))
       (setf (krma::object-from-id (the climish::object-id)) self)
       (values))))
@@ -2859,14 +2859,14 @@ ratsimp(coeffs(INTER3,[s],[2]));
     (flet ((chcol ()
 	     (let ((handles (the climish::primitive-handles)))
 	       (loop for handle in handles
-		     do (krma::primitive-set-color (krma:default-medium) handle #xff0000ff))
+		     do (krma::primitive-set-color (krma:default-scene) handle #xff0000ff))
 	       (values))))
       (chcol))))
 
 (defmethod clim:handle-event ((self graphical-mixin) (event clim:pointer-exit-event))
   (let ((handles (the climish::primitive-handles)))
     (loop for handle in handles
-	  do (krma::primitive-set-color (krma:default-medium) handle
+	  do (krma::primitive-set-color (krma:default-scene) handle
 					(krma::canonicalize-color (or (the color) #xff))))
     (values)))
 
@@ -3434,7 +3434,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 		 :degree p
 		 initargs)))))
 
-(defmethod draw ((medium krma:krma-essential-scene-mixin) (self b-spline-plane-curve) &key)
+(defmethod draw ((scene krma:krma-essential-scene-mixin) (self b-spline-plane-curve) &key)
   (let ((vertices (append
 		   (loop for i from 0 below 100
 			 with u0 = 0.0d0
@@ -3449,8 +3449,8 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 				(evaluate1 self 1.0d0)
 				(the coordinate-system))))
 		     (list (vx vec3) (vy vec3) (vz vec3))))))
-    (push (krma::medium-add-filled-3d-instanced-tube-primitive
-	   medium :default nil nil 2.5f0 #xff vertices
+    (push (krma::scene-add-filled-3d-instanced-tube-primitive
+	   scene :default nil nil 2.5f0 #xff vertices
 	   (the climish::object-id))
 	  (the climish::primitive-handles))
     (setf (krma::object-from-id (the climish::object-id)) self)
@@ -4195,7 +4195,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 (defclass b-spline-surface (3d-mixin b-spline-surface-mixin entity-mixin)
   ())
 
-(defmethod draw ((medium krma:krma-essential-scene-mixin) (self b-spline-surface-mixin) &key)
+(defmethod draw ((scene krma:krma-essential-scene-mixin) (self b-spline-surface-mixin) &key)
   (let* ((kv-u (the knot-vector-u))
 	 (kv-v (the knot-vector-v))
 	 (u-min (aref kv-u 0))
@@ -4253,7 +4253,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 
     (print (apply #'max indices))
 
-    (let ((scene medium)
+    (let ((scene scene)
 	  (oid (the climish::object-id))
 	  (color (krma::canonicalize-color (or (the color) #x00ffffff)))
 	  (group (or (the %group-id) :default)))
