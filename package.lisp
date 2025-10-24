@@ -1,11 +1,12 @@
 (in-package :cl-user)
 
 (adhoc:defpackage direct
-  (:use :3dm)
+  (:use :3dm :adhoc-scene-graph)
   (:shadow #:defclass)
   (:export #:defclass)
   (:shadow #:intersection)
   (:export #:intersection)
+  (:shadow #:locally)
   #+SBCL(:import-from :sb-int #:named-lambda)
   (:import-from :3dm.d
 		#:vec2
@@ -21,13 +22,6 @@
 		#:with-vec3
 		#:with-vec4
 		#:with-vec)
-
-  (:import-from :climish
-		#:x
-		#:y
-		#:z
-		#:matrix
-		#:origin)
 
   (:export #:+epsilon+
 	   #:pi/2

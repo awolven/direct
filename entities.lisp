@@ -91,9 +91,9 @@
 
 (defclass graphical-mixin ()
   ;; these objects are objects with drawable representation
-  ((climish:object-id :initform (climish::new-object-id))
+  ((object-id :initform (new-object-id))
    (%group-id :initform nil)
-   (climish:primitive-handles :initform nil)
+   (primitive-handles :initform nil)
    
    (%hidden? :initform nil
 	     :type boolean)
@@ -119,7 +119,7 @@
 	  :setter ((setf (the %color) value)))))
 
 (defun %copy-graphical-slots (from to)
-  (setf (send to climish::object-id) (climish::new-object-id))
+  (setf (send to object-id) (new-object-id))
   (setf (send to %hidden?) (send from %hidden?)
 	(send to %color)  (send from %color)
 	(send to  layer)  (send from  layer))
@@ -696,7 +696,7 @@
 
 (defmethod delete-entity ((coord-sys coordinate-system-mixin) entity)
   (declare (type coordinate-system-mixin coord-sys))
-  (climish::forget-object coord-sys)
+  (forget-object coord-sys)
   (let ((entities (slot-value coord-sys '%entities)))
     (remhash entity entities)
     t))
@@ -891,6 +891,7 @@
 	      (vw equation))
       self)))
 
+#+REDUNDANT
 (defun safe-euclid (vec4)
   (let ((w (vw vec4)))
     (if (= 0.0d0 w)
@@ -1090,7 +1091,7 @@
 				 (min-x (min (vx tail-loc) (vx head-loc)))
 				 (min-y (min (vy tail-loc) (vy head-loc)))
 				 (min-z (min (vz tail-loc) (vz head-loc))))
-			    (make-bounding-box (vec3 min-x min-y min-z)
+			    (bounding-box (vec3 min-x min-y min-z)
 					       (vec3 max-x max-y max-z))))
 		 :setter ((setter-error 'bounding-box self)))
 
@@ -1202,15 +1203,16 @@
     (push (krma::scene-add-filled-3d-instanced-tube-primitive
 	   scene :default nil nil 2.5f0 #xff (list (vx start) (vy start) (vz start)
 						    (vx end) (vy end) (vz end))
-	   (the climish::object-id))
-	  (the climish::primitive-handles))
-    (setf (krma::object-from-id (the climish::object-id)) self)
+	   (the object-id))
+	  (the primitive-handles))
+    (setf (krma::object-from-id (the object-id)) self)
     (values)))
 
 
 
 
 (defmethod evaluate1 ((self line) (parameter real) &key (derivs 0))
+  (declare (ignorable derivs))
   (v+ (the start) (v* parameter (the span))))
 
 (defmethod translate! ((self line) (offset vec3))
@@ -1334,12 +1336,13 @@
     (push (krma::scene-add-filled-3d-instanced-tube-primitive
 	   scene :default nil nil 2.5f0 #xff (list (vx start) (vy start) (vz start)
 						    (vx end) (vy end) (vz end))
-	   (the climish::object-id))
-	  (the climish::primitive-handles))
-    (setf (krma::object-from-id (the climish::object-id)) self)
+	   (the object-id))
+	  (the primitive-handles))
+    (setf (krma::object-from-id (the object-id)) self)
     (values)))
 
 (defmethod evaluate1 ((self 2d-line) (parameter real) &key (derivs 0))
+  (declare (ignorable derivs))
   (v+ (the start) (v* parameter (the span))))
    
 (defmethod translate! ((self 2d-line) (offset vec2))
@@ -2034,6 +2037,7 @@
 			   array))
 	 (intervals (isolate-roots-vas-cf (map 'vector #'vy control-points)))
 	 (convex-hull (convex-hull--2d control-points)))
+    (declare (ignorable convex-hull))
     ;;(multiple-value-bind (start end) (convex-polygon-domain convex-hull)
     ;;(unless end
     ;;(return-from roots-by-projected-polyhedron nil))
@@ -2220,12 +2224,14 @@
 (defun intersection-circle/2d-ray-2 (circle start end &optional (epsilon 1.0d-8))
   (real-roots (intersection-polynomial-circle/2d-ray circle start end) epsilon))
 
+#+NOTYET
 (defun intersection-circle/2d-ray-1 (circle start end &optional (epsilon 1.0d-8))
   "returns intersection in parameter space of ray"
   (let ((roots (intersection-2d-ray/circle-2 circle start end epsilon)))
     (remove-if-not #'(lambda (root)
 		       (<= 0.0d0 root)) roots)))
 
+#+NOTYET
 (defun intersection-circle/2d-ray (circle start end &optional (epsilon 1.0d-8))
   (let ((roots (intersection-2d-ray/circle-1 circle start end epsilon)))
     (mapcar #'(lambda (root)
@@ -2257,11 +2263,13 @@ ratsimp(coeffs(INTER3,[s],[2]));
 
 
 
+#+NOTYET
 (defun intersection-2d-line/circle (line circle)
   (when (eq (send line coordinate-system) (send circle coordinate-system))
     (let ((roots (intersection-ray/circle-1 (send line start) (send line end) circle)))
       (apply #'values (mapcar #'(lambda (root) (evaluate1 line root)) roots)))))
 
+#+NOTYET
 (defun intersection-ray/arc (start end arc)
   (let* ((roots (intersection-ray/circle-1 start end arc))
 	 (points (mapcar #'(lambda (root) (lerp start end root)) roots)))
@@ -2277,6 +2285,7 @@ ratsimp(coeffs(INTER3,[s],[2]));
 			    (when (<= (send arc end-angle) param (send arc start-angle))
 			      (list point)))))))))
 
+#+NOTYET
 (defun intersection-2d-line/arc (line arc)
   (when (eq (send line coordinate-system) (send arc coordinate-system))
     (intersection-ray/arc (send line start) (send line end) arc)))
@@ -2476,6 +2485,7 @@ ratsimp(coeffs(INTER3,[s],[2]));
 
 
 
+#+NOTYET
 (defun intersection-planar-rational-bezier/planar-rational-bezier (bezier-a bezier-b)
   (when (eq (send bezier-a coordinate-system) (send bezier-b coordinate-system))
     (let ((deg-a (send bezier-a degree))
@@ -2822,9 +2832,9 @@ ratsimp(coeffs(INTER3,[s],[2]));
 				(coord-y (+ (vy center) (* radius (sin angle))))
 				(coord (safe-euclid (m* matrix (vec4 coord-x coord-y 0.0d0 1.0d0)))))
 			   (list (krma::clampf (vx coord)) (krma::clampf (vy coord)) (krma::clampf (vz coord)))))))
-      (push (krma::scene-add-filled-3d-instanced-tube-primitive scene :default nil nil 2.5f0 #xff vertices (the climish::object-id))
-	    (the climish::primitive-handles))
-      (setf (krma::object-from-id (the climish::object-id)) self)
+      (push (krma::scene-add-filled-3d-instanced-tube-primitive scene :default nil nil 2.5f0 #xff vertices (the object-id))
+	    (the primitive-handles))
+      (setf (krma::object-from-id (the object-id)) self)
       (values))))
 
 (defmethod draw ((scene krma:krma-essential-scene-mixin) (self circle) &key)
@@ -2842,9 +2852,9 @@ ratsimp(coeffs(INTER3,[s],[2]));
 				(coord-y (+ (vy center) (* radius (sin angle))))
 				(coord (safe-euclid (m* matrix (vec4 coord-x coord-y 0.0d0 1.0d0)))))
 			   (list (krma::clampf (vx coord)) (krma::clampf (vy coord)) (krma::clampf (vz coord)))))))
-      (push (krma::scene-add-filled-3d-instanced-tube-primitive scene :default nil nil 2.5f0 #xff vertices (the climish::object-id))
-	    (the climish::primitive-handles))
-      (setf (krma::object-from-id (the climish::object-id)) self)
+      (push (krma::scene-add-filled-3d-instanced-tube-primitive scene :default nil nil 2.5f0 #xff vertices (the object-id))
+	    (the primitive-handles))
+      (setf (krma::object-from-id (the object-id)) self)
       (values))))
 
 (defmethod evaluate1 ((self arc) (parameter real) &key (derivs 0))
@@ -2857,14 +2867,14 @@ ratsimp(coeffs(INTER3,[s],[2]));
 (defmethod clim:handle-event ((self graphical-mixin) (event clim:pointer-enter-event))
   (let ()
     (flet ((chcol ()
-	     (let ((handles (the climish::primitive-handles)))
+	     (let ((handles (the primitive-handles)))
 	       (loop for handle in handles
 		     do (krma::primitive-set-color (krma:default-scene) handle #xff0000ff))
 	       (values))))
       (chcol))))
 
 (defmethod clim:handle-event ((self graphical-mixin) (event clim:pointer-exit-event))
-  (let ((handles (the climish::primitive-handles)))
+  (let ((handles (the primitive-handles)))
     (loop for handle in handles
 	  do (krma::primitive-set-color (krma:default-scene) handle
 					(krma::canonicalize-color (or (the color) #xff))))
@@ -3066,7 +3076,9 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 
 
 (defmethod evaluate1 ((self rational-power-basis-plane-curve) (parameter real) &key (derivs 0))
+  (declare (ignorable derivs))
   (let ((domain (the domain)))
+    (declare (ignorable domain))
     ;;(assert (<= (first domain) parameter (second domain)))
     (let* ((wxpoly (the wx-polynomial))
 	   (wypoly (the wy-polynomial))
@@ -3171,6 +3183,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 		    weights)
 	       initargs))))
 
+#+NIL
 (defmethod intersection ((bezier-a bezier-plane-curve) (bezier-b bezier-plane-curve))
   (intersection-planar-rational-bezier/planar-rational-bezier bezier-a bezier-b))
 
@@ -3264,6 +3277,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 	  finally (return B))))
 
 (defmethod evaluate1 ((self bezier-plane-curve) (parameter real) &key (derivs 0))
+  (declare (ignorable derivs))
   ;; todo: make work for rational curves
   (declare (optimize (speed 3) (safety 3)))
   (setq parameter (coerce parameter 'double-float))
@@ -3277,6 +3291,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 	    finally (return (3dm.d::%vec2 (/ (vx C) (vz C)) (/ (vy C) (vz C))))))))
 
 (defmethod evaluate1 ((self bezier-space-curve) (parameter real) &key (derivs 0))
+  (declare (ignorable derivs))
   ;; todo: make work for rational curves
   (declare (optimize (speed 3) (safety 3)))
   (setq parameter (coerce parameter 'double-float))
@@ -3451,14 +3466,15 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 		     (list (vx vec3) (vy vec3) (vz vec3))))))
     (push (krma::scene-add-filled-3d-instanced-tube-primitive
 	   scene :default nil nil 2.5f0 #xff vertices
-	   (the climish::object-id))
-	  (the climish::primitive-handles))
-    (setf (krma::object-from-id (the climish::object-id)) self)
+	   (the object-id))
+	  (the primitive-handles))
+    (setf (krma::object-from-id (the object-id)) self)
     (values)))
 
 
 
 (defmethod evaluate1 ((self b-spline-plane-curve) (parameter real) &key (derivs 0))
+  (declare (ignorable derivs))
   (let* ((knot-vector (the knot-vector))
 	 (cpoints (the homogeneous-control-points))
 	 (n (1- (length cpoints)))
@@ -3809,6 +3825,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 
 
 (defmethod evaluate1 ((self b-spline-space-curve) (parameter real) &key (derivs 0))
+  (declare (ignorable derivs))
   (let* ((knot-vector (the knot-vector))
 	 (cpoints (the homogeneous-control-points))
 	 (n (1- (length cpoints)))
@@ -4254,12 +4271,12 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
     (print (apply #'max indices))
 
     (let ((scene scene)
-	  (oid (the climish::object-id))
+	  (oid (the object-id))
 	  (color (krma::canonicalize-color (or (the color) #x00ffffff)))
 	  (group (or (the %group-id) :default)))
       (krma::rm-dispatch-to-render-thread-with-handle (scene draw-data handle)
-	(let ((draw-list (krma::draw-data-3d-triangle-list-with-normals-draw-list draw-data)))
-	  (setf (gethash handle (krma::draw-data-handle-hash-table draw-data))
+	(let ((draw-list (krma::rm-draw-data-3d-triangle-list-with-normals-draw-list draw-data)))
+	  (setf (gethash handle (krma::rm-draw-data-handle-hash-table draw-data))
 		(let* ((va (krma::draw-list-vertex-array draw-list))
 		       (ia (krma::draw-list-index-array draw-list)))
 		  (declare (type krma::foreign-adjustable-array ia va))
@@ -4369,6 +4386,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 (defun loop-p (chain)
   (edges-connect? (first chain) (car (last chain))))
 
+#+NOTYET
 (defun interior-loop? (loop candidate-exterior-loop)
   (let* ((ray-origin (send (first loop) start))
 	 (point-b (send (first candidate-exterior-loop) start))
@@ -4417,7 +4435,7 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
   
 
 
-
+#+NOTYET
 (defun intersection-planar-rational-cubic-power-basis-curve/planar-rational-cubic-power-basis-curve-1
     (curve-1 curve-2)
   (let* ((x1 (send curve-1 wx-polynomial))
@@ -4530,15 +4548,19 @@ choose center, radius, start-angle, end-angle, orientation." initargs))
 			(intersection-planar-rational-cubic-bezier/planar-rational-quadratic-bezier-c6
 			 xa0 ya0 wa0 xa1 ya1 wa1 xa2 ya2 wa2 xa3 ya3 wa3 xb0 yb0 wb0 xb1 yb1 wb1 xb2 yb2 wb2)))))
 
+#+NOTYET
 (defmethod intersection ((line 2d-line) (circle circle))
   (intersection-2d-line/circle line circle))
 
+#+NOTYET
 (defmethod intersection ((circle circle) (line 2d-line))
   (intersection-2d-line/circle line circle))
 
+#+NOTYET
 (defmethod intersection ((arc arc) (line 2d-line))
   (intersection-2d-line/arc line arc))
 
+#+NOTYET
 (defmethod intersection ((line 2d-line) (arc arc))
   (intersection-2d-line/arc line arc))
 
