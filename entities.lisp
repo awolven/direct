@@ -1283,8 +1283,8 @@
 	:type vec2
 	:initarg :mid
 	:initarg mid
-	:getter ((v+ (the tail location) (v* 0.5d0 (the span))))
-	:setter ((let ((new-span (v* 2.0d0 (v- (cl:the vec2 value) (the tail location)))))
+	:getter ((v+ (the end) (v* 0.5d0 (the span))))
+	:setter ((let ((new-span (v* 2.0d0 (v- (cl:the vec2 value) (the end)))))
 		   (setf (the span) new-span)
 		   (values))))
 
